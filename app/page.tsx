@@ -2,62 +2,64 @@
 
 import { useState } from 'react';
 import InputSection, { AnalyzeRequestPayload } from '@/components/InputSection';
-import AnalysisDashboard, { AnalysisResult } from '@/components/AnalysisDashboard';
+import AnalysisDashboard, { AnalysisResult, AppliedImprovement } from '@/components/AnalysisDashboard';
 import ResultViewer from '@/components/ResultViewer';
+import { CONTENT_TYPES, type ContentType } from '@/lib/contentTypes';
 
-type Step = 'input' | 'analysis' | 'result';
-
-function buildHtmlCode(content: string, appliedFields: Set<string>): string {
+function buildHtmlCode(content: string, appliedItems: AppliedImprovement[]): string {
   const paragraphs = content
     .split('\n')
     .filter((line) => line.trim().length > 0)
     .map((line) => `  <p>${line}</p>`)
     .join('\n');
 
-  const summaryBlock =
-    appliedFields.size > 0
-      ? '  <div class="summary"><strong>핵심 요약:</strong> 이 글은 독자가 찾는 답변을 빠르게 제공합니다.</div>\n'
-      : '';
+  const insertedParagraphs = appliedItems.map((item) => `  <p>${item.text}</p>`).join('\n');
 
-  return `<article>\n${summaryBlock}${paragraphs}\n</article>`;
+  const body = [paragraphs, insertedParagraphs].filter(Boolean).join('\n');
+
+  return `<article>\n${body}\n</article>`;
 }
 
-function buildPreviewHtml(content: string, appliedFields: Set<string>): string {
+function buildPreviewHtml(content: string, appliedItems: AppliedImprovement[]): string {
   const lines = content.split('\n').filter((line) => line.trim().length > 0);
-  if (lines.length === 0) {
-    return '<p>분석할 본문이 없습니다.</p>';
-  }
+  const original =
+    lines.length > 0
+      ? lines.map((line) => `<p>${line}</p>`).join('')
+      : '<p>분석할 본문이 없습니다.</p>';
 
-  return lines
-    .map((line, index) => {
-      const isChanged = appliedFields.size > 0 && index === 0;
-      return isChanged ? `<p><span class="diff-highlight">${line}</span></p>` : `<p>${line}</p>`;
-    })
+  const inserted = appliedItems
+    .map((item) => `<p><span class="diff-highlight">${item.text}</span></p>`)
     .join('');
+
+  return original + inserted;
 }
 
 export default function Home() {
-  const [step, setStep] = useState<Step>('input');
+  const [contentType, setContentType] = useState<ContentType>(CONTENT_TYPES[0].id);
   const [payload, setPayload] = useState<AnalyzeRequestPayload | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [appliedFields, setAppliedFields] = useState<Set<string>>(new Set());
+  const [appliedItems, setAppliedItems] = useState<AppliedImprovement[]>([]);
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [htmlCode, setHtmlCode] = useState('');
   const [reevaluateCount, setReevaluateCount] = useState(0);
   const [isReevaluating, setIsReevaluating] = useState(false);
 
   const handleResult = (nextPayload: AnalyzeRequestPayload, nextResult: AnalysisResult) => {
     setPayload(nextPayload);
     setResult(nextResult);
-    setAppliedFields(new Set());
+    setAppliedItems([]);
+    setPreviewHtml(buildPreviewHtml(nextPayload.content, []));
+    setHtmlCode(buildHtmlCode(nextPayload.content, []));
     setReevaluateCount(0);
-    setStep('analysis');
   };
 
-  const handleApply = (fields: string[]) => {
-    setAppliedFields((prev) => {
-      const next = new Set(prev);
-      fields.forEach((field) => next.add(field));
-      return next;
-    });
+  const handleApply = (items: AppliedImprovement[]) => {
+    const merged = [...appliedItems, ...items];
+    setAppliedItems(merged);
+    if (payload) {
+      setPreviewHtml(buildPreviewHtml(payload.content, merged));
+      setHtmlCode(buildHtmlCode(payload.content, merged));
+    }
   };
 
   const handleReevaluate = async () => {
@@ -80,42 +82,72 @@ export default function Home() {
   };
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-12">
-      <header>
-        <h1 className="text-2xl font-bold text-gray-900">B2B 블로그 최적화 도구</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          SEO/GEO 분석을 기반으로 블로그 콘텐츠를 진단하고 개선합니다.
-        </p>
+    <div className="min-h-screen bg-[#0b0d1a]">
+      <header className="flex items-center gap-3 border-b border-white/10 bg-[#11142b] px-6 py-4">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#8c49ff] text-sm font-bold text-white">
+          U+
+        </div>
+        <div>
+          <h1 className="text-lg font-bold text-white">U+ Content Developer</h1>
+          <p className="text-xs text-gray-400">
+            SEO/GEO 분석을 기반으로 블로그 콘텐츠를 진단하고 개선합니다.
+          </p>
+        </div>
       </header>
 
-      <InputSection onResult={handleResult} />
+      <main className="w-full px-6 py-8">
+        {/* 콘텐츠 유형 선택 */}
+        <div className="mb-8">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400">
+            콘텐츠 유형 선택
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {CONTENT_TYPES.map((type) => {
+              const isActive = contentType === type.id;
+              return (
+                <button
+                  key={type.id}
+                  type="button"
+                  onClick={() => setContentType(type.id)}
+                  title={type.description}
+                  style={{
+                    backgroundColor: type.color,
+                    color: type.textColor,
+                    boxShadow: isActive ? `0 0 0 2px #0b0d1a, 0 0 0 4px ${type.color}` : undefined,
+                  }}
+                  className={`rounded-full px-5 py-2 text-sm font-semibold transition ${
+                    isActive ? 'opacity-100' : 'opacity-70 hover:opacity-100'
+                  }`}
+                >
+                  {type.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
-      {step !== 'input' && result && (
-        <section>
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_1fr_1.6fr]">
+          <InputSection contentType={contentType} onResult={handleResult} />
+
           <AnalysisDashboard result={result} onApply={handleApply} />
-          {step === 'analysis' && (
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => setStep('result')}
-                className="rounded-lg bg-[#8c49ff] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#7a3ce6]"
-              >
-                최종 결과 확인하기
-              </button>
+
+          {payload ? (
+            <ResultViewer
+              previewHtml={previewHtml}
+              onPreviewHtmlChange={setPreviewHtml}
+              htmlCode={htmlCode}
+              onHtmlCodeChange={setHtmlCode}
+              reevaluateCount={reevaluateCount}
+              isReevaluating={isReevaluating}
+              onReevaluate={handleReevaluate}
+            />
+          ) : (
+            <div className="flex h-full min-h-[240px] w-full items-center justify-center rounded-2xl border border-white/10 bg-[#161a2e] p-6 text-center text-sm text-gray-400 shadow-lg shadow-black/20">
+              보완사항을 반영하면 최종 결과가 여기에 표시됩니다.
             </div>
           )}
-        </section>
-      )}
-
-      {step === 'result' && payload && (
-        <ResultViewer
-          previewHtml={buildPreviewHtml(payload.content, appliedFields)}
-          htmlCode={buildHtmlCode(payload.content, appliedFields)}
-          reevaluateCount={reevaluateCount}
-          isReevaluating={isReevaluating}
-          onReevaluate={handleReevaluate}
-        />
-      )}
-    </main>
+        </div>
+      </main>
+    </div>
   );
 }

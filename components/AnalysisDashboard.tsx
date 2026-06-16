@@ -13,6 +13,7 @@ export interface ImprovementItem {
   field: string;
   reason: string;
   suggestion: string;
+  insertText: string;
 }
 
 export interface AnalysisResult {
@@ -20,9 +21,14 @@ export interface AnalysisResult {
   improvements: ImprovementItem[];
 }
 
+export interface AppliedImprovement {
+  field: string;
+  text: string;
+}
+
 interface AnalysisDashboardProps {
   result: AnalysisResult | null;
-  onApply: (fields: string[]) => void;
+  onApply: (items: AppliedImprovement[]) => void;
 }
 
 const METRIC_LABELS: Record<keyof AnalysisScores, string> = {
@@ -32,15 +38,91 @@ const METRIC_LABELS: Record<keyof AnalysisScores, string> = {
   geo: 'GEO',
 };
 
+const METRIC_COLORS: Record<keyof AnalysisScores, string> = {
+  total: '#8c49ff',
+  quality: '#2dd4bf',
+  seo: '#f5a623',
+  geo: '#38bdf8',
+};
+
 const PASS_THRESHOLD = 90;
 
+function CircularScore({
+  label,
+  score,
+  color,
+  isLow,
+}: {
+  label: string;
+  score: number;
+  color: string;
+  isLow: boolean;
+}) {
+  const size = 88;
+  const strokeWidth = 8;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.min(100, Math.max(0, score));
+  const offset = circumference - (circumference * clamped) / 100;
+
+  return (
+    <div
+      className={`flex flex-col items-center rounded-xl border p-4 ${
+        isLow ? 'border-white/15 bg-white/[0.04]' : 'border-white/5 bg-white/[0.02]'
+      }`}
+    >
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} className="-rotate-90">
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke="rgba(255,255,255,0.08)"
+            strokeWidth={strokeWidth}
+          />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            fill="none"
+            stroke={color}
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+            className="transition-all duration-500"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-lg font-bold text-white">{score}</span>
+          <span className="text-[10px] text-gray-400">점</span>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-col items-center gap-1">
+        <p className="text-sm font-medium text-gray-300">{label}</p>
+        {isLow && (
+          <span
+            className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+            style={{ backgroundColor: `${color}26`, color }}
+          >
+            개선 필요
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AnalysisDashboard({ result, onApply }: AnalysisDashboardProps) {
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [appliedFields, setAppliedFields] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [appliedIndices, setAppliedIndices] = useState<Set<number>>(new Set());
+  const [editedText, setEditedText] = useState<Record<number, string>>({});
+  const [isExpanded, setIsExpanded] = useState(false);
 
   if (!result) {
     return (
-      <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-400 shadow-sm sm:p-8">
+      <div className="flex h-full min-h-[240px] w-full items-center justify-center rounded-2xl border border-white/10 bg-[#161a2e] p-6 text-center text-sm text-gray-400 shadow-lg shadow-black/20">
         분석을 시작하면 결과가 여기에 표시됩니다.
       </div>
     );
@@ -48,67 +130,58 @@ export default function AnalysisDashboard({ result, onApply }: AnalysisDashboard
 
   const { scores, improvements } = result;
 
-  const toggleSelect = (field: string) => {
+  const getText = (index: number, item: ImprovementItem) => editedText[index] ?? item.insertText;
+
+  const toggleSelect = (index: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(field)) next.delete(field);
-      else next.add(field);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
       return next;
     });
   };
 
-  const applySingle = (field: string) => {
-    onApply([field]);
-    setAppliedFields((prev) => new Set(prev).add(field));
+  const applySingle = (index: number, item: ImprovementItem) => {
+    onApply([{ field: item.field, text: getText(index, item) }]);
+    setAppliedIndices((prev) => new Set(prev).add(index));
   };
 
   const applyAll = () => {
-    const fields = improvements
-      .map((item) => item.field)
-      .filter((field) => selected.has(field) && !appliedFields.has(field));
-    if (fields.length === 0) return;
-    onApply(fields);
-    setAppliedFields((prev) => {
+    const targets = improvements
+      .map((item, index) => ({ item, index }))
+      .filter(({ index }) => selected.has(index) && !appliedIndices.has(index));
+    if (targets.length === 0) return;
+    onApply(targets.map(({ item, index }) => ({ field: item.field, text: getText(index, item) })));
+    setAppliedIndices((prev) => {
       const next = new Set(prev);
-      fields.forEach((field) => next.add(field));
+      targets.forEach(({ index }) => next.add(index));
       return next;
     });
   };
 
   const pendingCount = improvements.filter(
-    (item) => selected.has(item.field) && !appliedFields.has(item.field)
+    (_, index) => selected.has(index) && !appliedIndices.has(index)
   ).length;
 
   return (
-    <div className="w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
-      <div className="mb-6 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-gray-900">분석 결과</h2>
-        <button
-          type="button"
-          onClick={applyAll}
-          disabled={pendingCount === 0}
-          className="shrink-0 rounded-lg bg-[#8c49ff] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#7a3ce6] disabled:cursor-not-allowed disabled:bg-gray-300"
-        >
-          보완사항 전체 일괄 반영{pendingCount > 0 ? ` (${pendingCount})` : ''}
-        </button>
+    <div className="w-full rounded-2xl border border-white/10 bg-[#161a2e] p-6 shadow-lg shadow-black/20">
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold text-white">분석 결과</h2>
       </div>
 
-      {/* 4개 지표 프로그레스 바 */}
-      <div className="mb-8 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {/* 4개 지표 원형 차트 */}
+      <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {(Object.keys(METRIC_LABELS) as Array<keyof AnalysisScores>).map((key) => {
           const score = scores[key];
           const isLow = score < PASS_THRESHOLD;
           return (
-            <div key={key} className={`rounded-xl p-4 ${isLow ? 'bg-[#f4ddff]' : 'bg-gray-50'}`}>
-              <p className="mb-2 text-sm font-medium text-gray-600">{METRIC_LABELS[key]}</p>
-              <p className="mb-2 text-xl font-bold text-gray-900">{score}점</p>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-white/70">
-                <div
-                  className="h-full rounded-full bg-[#8c49ff] transition-all"
-                  style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
-                />
-              </div>
-            </div>
+            <CircularScore
+              key={key}
+              label={METRIC_LABELS[key]}
+              score={score}
+              color={METRIC_COLORS[key]}
+              isLow={isLow}
+            />
           );
         })}
       </div>
@@ -116,44 +189,102 @@ export default function AnalysisDashboard({ result, onApply }: AnalysisDashboard
       {/* 개선 가이드 */}
       {improvements.length > 0 && (
         <div>
-          <h3 className="mb-3 text-sm font-semibold text-gray-900">보완/개선 가이드</h3>
-          <ul className="space-y-2">
-            {improvements.map((item) => {
-              const applied = appliedFields.has(item.field);
-              return (
-                <li key={item.field} className="rounded-xl bg-[#f4ddff] px-4 py-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <label className="flex flex-1 items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(item.field)}
-                        onChange={() => toggleSelect(item.field)}
-                        disabled={applied}
-                        className="mt-1 h-4 w-4 rounded border-gray-300 text-[#8c49ff] focus:ring-[#8c49ff]"
-                      />
-                      <span className={applied ? 'text-gray-400 line-through' : 'text-gray-800'}>
-                        <span className="mb-1 inline-block rounded-full bg-[#8c49ff]/10 px-2 py-0.5 text-xs font-medium text-[#8c49ff]">
-                          {item.field}
-                        </span>
-                        <span className="block text-sm text-gray-600">{item.reason}</span>
-                        <span className="mt-1 block text-sm font-medium text-gray-900">
-                          {item.suggestion}
-                        </span>
-                      </span>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => applySingle(item.field)}
-                      disabled={applied}
-                      className="shrink-0 rounded-lg border border-[#8c49ff] px-3 py-1.5 text-xs font-medium text-[#8c49ff] transition hover:bg-[#8c49ff]/10 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+          <button
+            type="button"
+            onClick={() => setIsExpanded((prev) => !prev)}
+            className="flex w-full items-center justify-between rounded-lg py-2 text-sm font-semibold text-white transition hover:text-[#8c49ff]"
+          >
+            <span>보완/개선 가이드 ({improvements.length}개)</span>
+            <span className="text-xs font-medium text-gray-400">
+              {isExpanded ? '접기 ▲' : '펼치기 ▼'}
+            </span>
+          </button>
+
+          {isExpanded && (
+            <>
+              <div className="mb-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={applyAll}
+                  disabled={pendingCount === 0}
+                  className="shrink-0 rounded-lg bg-[#8c49ff] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#7a3ce6] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-400"
+                >
+                  보완사항 전체 일괄 반영{pendingCount > 0 ? ` (${pendingCount})` : ''}
+                </button>
+              </div>
+              <ul className="space-y-2">
+                {improvements.map((item, index) => {
+                  const applied = appliedIndices.has(index);
+                  return (
+                    <li
+                      key={index}
+                      className={`rounded-xl border border-l-4 px-4 py-3 ${
+                        applied
+                          ? 'border-white/5 border-l-white/15 bg-white/[0.02]'
+                          : 'border-white/10 border-l-[#8c49ff] bg-white/[0.03]'
+                      }`}
                     >
-                      {applied ? '반영됨' : '반영하기'}
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex flex-1 items-start gap-3">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(index)}
+                            onChange={() => toggleSelect(index)}
+                            disabled={applied}
+                            className="mt-1 h-4 w-4 rounded border-white/20 bg-transparent text-[#8c49ff] focus:ring-[#8c49ff]"
+                          />
+                          <div className={`flex-1 ${applied ? 'text-gray-400' : 'text-gray-100'}`}>
+                            <span
+                              className={`mb-1 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                                applied
+                                  ? 'bg-white/5 text-gray-400'
+                                  : 'bg-[#8c49ff]/15 text-[#8c49ff]'
+                              }`}
+                            >
+                              {item.field}
+                            </span>
+                            <p className={`text-sm ${applied ? 'line-through' : 'text-gray-300'}`}>
+                              {item.reason}
+                            </p>
+                            <p
+                              className={`mt-1 text-sm font-medium ${
+                                applied ? 'line-through' : 'text-white'
+                              }`}
+                            >
+                              {item.suggestion}
+                            </p>
+
+                            <div className="mt-2">
+                              <label className="mb-1 block text-xs font-medium text-gray-400">
+                                삽입할 문장 (수정 가능)
+                              </label>
+                              <textarea
+                                value={getText(index, item)}
+                                onChange={(e) =>
+                                  setEditedText((prev) => ({ ...prev, [index]: e.target.value }))
+                                }
+                                disabled={applied}
+                                rows={2}
+                                className="w-full resize-none rounded-lg border border-white/10 bg-[#0f1224] px-3 py-2 text-sm text-gray-100 outline-none transition focus:border-[#8c49ff] focus:ring-2 focus:ring-[#8c49ff]/30 disabled:bg-white/[0.02] disabled:text-gray-400"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => applySingle(index, item)}
+                          disabled={applied}
+                          className="shrink-0 rounded-lg border border-[#8c49ff] px-3 py-1.5 text-xs font-medium text-[#8c49ff] transition hover:bg-[#8c49ff]/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-gray-400"
+                        >
+                          {applied ? '반영됨' : '반영하기'}
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
         </div>
       )}
     </div>
