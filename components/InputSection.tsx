@@ -163,7 +163,9 @@ export default function InputSection({ contentType, onResult }: InputSectionProp
 
   return (
     <div className="w-full rounded-2xl border border-white/10 bg-[#161a2e] p-6 shadow-lg shadow-black/20">
-      <h2 className="mb-1 text-lg font-semibold text-white">블로그 콘텐츠 입력</h2>
+      <span className="mb-3 inline-block rounded-full bg-[#8c49ff] px-4 py-1.5 text-sm font-semibold text-white">
+        블로그 콘텐츠 입력
+      </span>
       <p className="mb-6 text-sm text-gray-400">분석할 키워드와 목적, 원문을 입력해 주세요.</p>
 
       {/* 메인 키워드 */}

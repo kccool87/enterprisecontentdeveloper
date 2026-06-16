@@ -29,6 +29,7 @@ export interface AppliedImprovement {
 interface AnalysisDashboardProps {
   result: AnalysisResult | null;
   onApply: (items: AppliedImprovement[]) => void;
+  onRemove: (items: AppliedImprovement[]) => void;
 }
 
 const METRIC_LABELS: Record<keyof AnalysisScores, string> = {
@@ -114,9 +115,10 @@ function CircularScore({
   );
 }
 
-export default function AnalysisDashboard({ result, onApply }: AnalysisDashboardProps) {
+export default function AnalysisDashboard({ result, onApply, onRemove }: AnalysisDashboardProps) {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [appliedIndices, setAppliedIndices] = useState<Set<number>>(new Set());
+  const [appliedPayloads, setAppliedPayloads] = useState<Record<number, AppliedImprovement>>({});
   const [editedText, setEditedText] = useState<Record<number, string>>({});
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -142,8 +144,34 @@ export default function AnalysisDashboard({ result, onApply }: AnalysisDashboard
   };
 
   const applySingle = (index: number, item: ImprovementItem) => {
-    onApply([{ field: item.field, text: getText(index, item) }]);
+    const appliedItem: AppliedImprovement = { field: item.field, text: getText(index, item) };
+    onApply([appliedItem]);
     setAppliedIndices((prev) => new Set(prev).add(index));
+    setAppliedPayloads((prev) => ({ ...prev, [index]: appliedItem }));
+  };
+
+  const removeSingle = (index: number) => {
+    const appliedItem = appliedPayloads[index];
+    if (!appliedItem) return;
+    onRemove([appliedItem]);
+    setAppliedIndices((prev) => {
+      const next = new Set(prev);
+      next.delete(index);
+      return next;
+    });
+    setAppliedPayloads((prev) => {
+      const next = { ...prev };
+      delete next[index];
+      return next;
+    });
+  };
+
+  const toggleApply = (index: number, item: ImprovementItem) => {
+    if (appliedIndices.has(index)) {
+      removeSingle(index);
+    } else {
+      applySingle(index, item);
+    }
   };
 
   const applyAll = () => {
@@ -151,12 +179,33 @@ export default function AnalysisDashboard({ result, onApply }: AnalysisDashboard
       .map((item, index) => ({ item, index }))
       .filter(({ index }) => selected.has(index) && !appliedIndices.has(index));
     if (targets.length === 0) return;
-    onApply(targets.map(({ item, index }) => ({ field: item.field, text: getText(index, item) })));
+    const appliedItems = targets.map(({ item, index }) => ({
+      index,
+      appliedItem: { field: item.field, text: getText(index, item) } as AppliedImprovement,
+    }));
+    onApply(appliedItems.map(({ appliedItem }) => appliedItem));
     setAppliedIndices((prev) => {
       const next = new Set(prev);
-      targets.forEach(({ index }) => next.add(index));
+      appliedItems.forEach(({ index }) => next.add(index));
       return next;
     });
+    setAppliedPayloads((prev) => {
+      const next = { ...prev };
+      appliedItems.forEach(({ index, appliedItem }) => {
+        next[index] = appliedItem;
+      });
+      return next;
+    });
+  };
+
+  const cancelAll = () => {
+    const items = Array.from(appliedIndices)
+      .map((index) => appliedPayloads[index])
+      .filter((item): item is AppliedImprovement => Boolean(item));
+    if (items.length === 0) return;
+    onRemove(items);
+    setAppliedIndices(new Set());
+    setAppliedPayloads({});
   };
 
   const pendingCount = improvements.filter(
@@ -166,7 +215,9 @@ export default function AnalysisDashboard({ result, onApply }: AnalysisDashboard
   return (
     <div className="w-full rounded-2xl border border-white/10 bg-[#161a2e] p-6 shadow-lg shadow-black/20">
       <div className="mb-6">
-        <h2 className="text-lg font-semibold text-white">분석 결과</h2>
+        <span className="inline-block rounded-full bg-[#8c49ff] px-4 py-1.5 text-sm font-semibold text-white">
+          분석 결과
+        </span>
       </div>
 
       {/* 4개 지표 원형 차트 */}
@@ -203,14 +254,31 @@ export default function AnalysisDashboard({ result, onApply }: AnalysisDashboard
           {isExpanded && (
             <>
               <div className="mb-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={applyAll}
-                  disabled={pendingCount === 0}
-                  className="shrink-0 rounded-lg bg-[#8c49ff] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#7a3ce6] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-400"
-                >
-                  보완사항 전체 일괄 반영{pendingCount > 0 ? ` (${pendingCount})` : ''}
-                </button>
+                {pendingCount > 0 ? (
+                  <button
+                    type="button"
+                    onClick={applyAll}
+                    className="shrink-0 rounded-lg bg-[#8c49ff] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#7a3ce6]"
+                  >
+                    보완사항 전체 일괄 반영 ({pendingCount})
+                  </button>
+                ) : appliedIndices.size > 0 ? (
+                  <button
+                    type="button"
+                    onClick={cancelAll}
+                    className="shrink-0 rounded-lg border border-red-400/40 bg-red-400/10 px-4 py-2 text-sm font-semibold text-red-300 transition hover:bg-red-400/20"
+                  >
+                    전체 일괄 취소 ({appliedIndices.size})
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="shrink-0 cursor-not-allowed rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-gray-400"
+                  >
+                    보완사항 전체 일괄 반영
+                  </button>
+                )}
               </div>
               <ul className="space-y-2">
                 {improvements.map((item, index) => {
@@ -272,11 +340,14 @@ export default function AnalysisDashboard({ result, onApply }: AnalysisDashboard
                         </div>
                         <button
                           type="button"
-                          onClick={() => applySingle(index, item)}
-                          disabled={applied}
-                          className="shrink-0 rounded-lg border border-[#8c49ff] px-3 py-1.5 text-xs font-medium text-[#8c49ff] transition hover:bg-[#8c49ff]/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-gray-400"
+                          onClick={() => toggleApply(index, item)}
+                          className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${
+                            applied
+                              ? 'border-white/15 text-gray-400 hover:border-red-400/50 hover:bg-red-400/10 hover:text-red-300'
+                              : 'border-[#8c49ff] text-[#8c49ff] hover:bg-[#8c49ff]/15'
+                          }`}
                         >
-                          {applied ? '반영됨' : '반영하기'}
+                          {applied ? '반영됨 (취소)' : '반영하기'}
                         </button>
                       </div>
                     </li>

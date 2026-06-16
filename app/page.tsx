@@ -62,6 +62,15 @@ export default function Home() {
     }
   };
 
+  const handleRemove = (items: AppliedImprovement[]) => {
+    const remaining = appliedItems.filter((existing) => !items.includes(existing));
+    setAppliedItems(remaining);
+    if (payload) {
+      setPreviewHtml(buildPreviewHtml(payload.content, remaining));
+      setHtmlCode(buildHtmlCode(payload.content, remaining));
+    }
+  };
+
   const handleReevaluate = async () => {
     if (!payload || reevaluateCount >= 3) return;
     setIsReevaluating(true);
@@ -82,7 +91,16 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0b0d1a]">
+    <div
+      className="min-h-screen bg-[#0b0d1a]"
+      style={{
+        backgroundImage:
+          'radial-gradient(ellipse 900px 900px at 95% 0%, rgba(214,38,159,0.30), transparent 60%), ' +
+          'radial-gradient(ellipse 1000px 1000px at 100% 45%, rgba(140,73,255,0.28), transparent 60%), ' +
+          'radial-gradient(ellipse 800px 800px at 85% 90%, rgba(214,38,159,0.16), transparent 60%)',
+        backgroundAttachment: 'fixed',
+      }}
+    >
       <header className="flex items-center gap-3 border-b border-white/10 bg-[#11142b] px-6 py-4">
         <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#8c49ff] text-sm font-bold text-white">
           U+
@@ -129,7 +147,7 @@ export default function Home() {
         <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_1fr_1.6fr]">
           <InputSection contentType={contentType} onResult={handleResult} />
 
-          <AnalysisDashboard result={result} onApply={handleApply} />
+          <AnalysisDashboard result={result} onApply={handleApply} onRemove={handleRemove} />
 
           {payload ? (
             <ResultViewer
@@ -137,6 +155,8 @@ export default function Home() {
               onPreviewHtmlChange={setPreviewHtml}
               htmlCode={htmlCode}
               onHtmlCodeChange={setHtmlCode}
+              mainKeyword={payload.keywords.main}
+              purpose={payload.purpose}
               reevaluateCount={reevaluateCount}
               isReevaluating={isReevaluating}
               onReevaluate={handleReevaluate}
