@@ -1,0 +1,29 @@
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# testing
+coverage
+
+# next.js
+.next/
+out/
+
+# production
+build
+
+# misc
+.DS_Store
+*.pem
+
+# env files (중요!)
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env
+
+# claude code local state
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
