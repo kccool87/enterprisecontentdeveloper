@@ -250,7 +250,7 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
 
   return (
     <div className="flex min-h-[600px] w-full flex-col rounded-2xl border border-white/10 bg-[#161a2e] p-6 shadow-lg shadow-black/20 lg:h-full lg:min-h-0">
-      <span className="mb-3 inline-block flex-shrink-0 rounded-full bg-lime-400 px-4 py-1.5 text-sm font-semibold text-gray-900">
+      <span className="mb-3 block flex-shrink-0 rounded-full bg-lime-400 px-4 py-1.5 text-center text-sm font-semibold text-gray-900">
         INPUT YOUR CONTENT
       </span>
 

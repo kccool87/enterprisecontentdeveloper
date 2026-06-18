@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export interface AnalysisScores {
   total: number;
@@ -125,6 +125,14 @@ export default function AnalysisDashboard({ result, onApply, onRemove }: Analysi
   const [appliedIndices, setAppliedIndices] = useState<Set<number>>(new Set());
   const [appliedPayloads, setAppliedPayloads] = useState<Record<number, AppliedImprovement>>({});
   const [editedText, setEditedText] = useState<Record<number, string>>({});
+
+  // result가 바뀔 때(재평가 포함) 선택/반영 상태 초기화
+  useEffect(() => {
+    setSelected(new Set());
+    setAppliedIndices(new Set());
+    setAppliedPayloads({});
+    setEditedText({});
+  }, [result]);
 
   if (!result) {
     return (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import InputSection, { AnalyzeRequestPayload } from '@/components/InputSection';
 import AnalysisDashboard, { AnalysisResult, AppliedImprovement } from '@/components/AnalysisDashboard';
 import ResultViewer from '@/components/ResultViewer';
@@ -135,6 +135,8 @@ export default function Home() {
   const [reevaluateProgress, setReevaluateProgress] = useState(0);
   const [isGeneratingGeoHtml, setIsGeneratingGeoHtml] = useState(false);
   const [htmlGenProgress, setHtmlGenProgress] = useState(0);
+  // GEO HTML 보존용 ref (재평가 시 복원)
+  const geoHtmlRef = useRef('');
 
   const handleResult = (nextPayload: AnalyzeRequestPayload, nextResult: AnalysisResult) => {
     setPayload(nextPayload);
@@ -143,6 +145,7 @@ export default function Home() {
     setPreviewHtml(buildPreviewHtml(nextPayload.content, []));
     setHtmlCode(buildHtmlCode(nextPayload.content, []));
     setReevaluateCount(0);
+    geoHtmlRef.current = ''; // 새 분석 시 GEO HTML 초기화
 
     void (async () => {
       setIsGeneratingGeoHtml(true);
@@ -169,6 +172,7 @@ export default function Home() {
           clearInterval(timer);
           setHtmlGenProgress(100);
           setTimeout(() => {
+            geoHtmlRef.current = data.html; // GEO HTML 저장
             setHtmlCode(data.html);
             setPreviewHtml(stripArticleWrapper(data.html));
             setIsGeneratingGeoHtml(false);
@@ -206,7 +210,7 @@ export default function Home() {
   };
 
   const handleReevaluate = async () => {
-    if (!payload || reevaluateCount >= 3) return;
+    if (!payload || reevaluateCount >= 5) return;
     setIsReevaluating(true);
     setReevaluateProgress(0);
 
@@ -235,6 +239,13 @@ export default function Home() {
           setIsReevaluating(false);
           setResult(nextResult);
           setReevaluateCount((count) => count + 1);
+          // GEO HTML 복원: 재평가가 기존 GEO HTML을 덮어쓰지 않도록 보존
+          const savedGeoHtml = geoHtmlRef.current;
+          if (savedGeoHtml) {
+            setAppliedItems([]);
+            setHtmlCode(savedGeoHtml);
+            setPreviewHtml(stripArticleWrapper(savedGeoHtml));
+          }
         }, 400);
       } else {
         cleanup(false);
@@ -285,6 +296,7 @@ export default function Home() {
               mainKeyword={payload.keywords.main}
               purpose={payload.purpose}
               reevaluateCount={reevaluateCount}
+              maxReevaluate={5}
               isReevaluating={isReevaluating}
               reevaluateProgress={reevaluateProgress}
               onReevaluate={handleReevaluate}
