@@ -1,6 +1,13 @@
+@import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Noto+Sans:wght@400;500&display=swap');
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
 body {
   background-color: #0b0d1a;
+}
+
+[contenteditable][data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: #6b7280;
+  pointer-events: none;
 }

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 52" fill="none">
+  <!-- LG face circle mark -->
+  <circle cx="26" cy="26" r="26" fill="white"/>
+
+  <!-- L: vertical stroke -->
+  <rect x="10" y="13" width="7" height="22" fill="#E60073" rx="1"/>
+  <!-- L: horizontal stroke -->
+  <rect x="10" y="28" width="19" height="7" fill="#E60073" rx="1"/>
+
+  <!-- G: outer arc (C-shape) -->
+  <path d="M33,13 L42,13 Q52,13 52,26 Q52,39 33,39 L33,32 Q43,32 44,26 Q43,20 33,20 Z" fill="#E60073"/>
+  <!-- G: inner horizontal bar -->
+  <rect x="39" y="23" width="13" height="6" fill="#E60073" rx="1"/>
+
+  <!-- Small circle (eye/pupil) - upper right of G -->
+  <circle cx="50" cy="15" r="5" fill="#E60073"/>
+
+  <!-- U+ wordmark -->
+  <text x="68" y="36" fill="white" font-size="28" font-weight="900" font-family="Arial, Helvetica, sans-serif" letter-spacing="-1">U+</text>
+</svg>

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, KeyboardEvent } from 'react';
+import { useState, useRef, KeyboardEvent } from 'react';
 import type { AnalysisResult } from './AnalysisDashboard';
-import type { ContentType } from '@/lib/contentTypes';
+import { CONTENT_TYPES, type ContentType } from '@/lib/contentTypes';
 
 export interface AnalyzeRequestPayload {
   keywords: {
@@ -17,6 +17,7 @@ export interface AnalyzeRequestPayload {
 
 interface InputSectionProps {
   contentType: ContentType;
+  onContentTypeChange: (type: ContentType) => void;
   onResult: (payload: AnalyzeRequestPayload, result: AnalysisResult) => void;
 }
 
@@ -24,11 +25,21 @@ function useTagInput() {
   const [tags, setTags] = useState<string[]>([]);
   const [input, setInput] = useState('');
 
+  const addFromText = (text: string, currentTags: string[]) => {
+    const parts = text
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    const next = [...currentTags];
+    parts.forEach((p) => {
+      if (!next.includes(p)) next.push(p);
+    });
+    return next;
+  };
+
   const add = () => {
-    const trimmed = input.trim();
-    if (trimmed && !tags.includes(trimmed)) {
-      setTags((prev) => [...prev, trimmed]);
-    }
+    if (!input.trim()) return;
+    setTags((prev) => addFromText(input, prev));
     setInput('');
   };
 
@@ -37,13 +48,21 @@ function useTagInput() {
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
+    if (e.key === 'Enter') {
       e.preventDefault();
       add();
     }
   };
 
-  return { tags, input, setInput, add, remove, handleKeyDown };
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData('text');
+    if (!text.includes(',')) return;
+    e.preventDefault();
+    setTags((prev) => addFromText(input + text, prev));
+    setInput('');
+  };
+
+  return { tags, input, setInput, add, remove, handleKeyDown, handlePaste };
 }
 
 interface TagInputFieldProps {
@@ -53,8 +72,11 @@ interface TagInputFieldProps {
   input: string;
   onInputChange: (value: string) => void;
   onKeyDown: (e: KeyboardEvent<HTMLInputElement>) => void;
+  onPaste: (e: React.ClipboardEvent<HTMLInputElement>) => void;
   onAdd: () => void;
   onRemove: (tag: string) => void;
+  required?: boolean;
+  tagVariant?: 'purple' | 'lavender';
 }
 
 function TagInputField({
@@ -64,20 +86,34 @@ function TagInputField({
   input,
   onInputChange,
   onKeyDown,
+  onPaste,
   onAdd,
   onRemove,
+  required,
+  tagVariant = 'purple',
 }: TagInputFieldProps) {
+  const isLavender = tagVariant === 'lavender';
+  const tagBg = isLavender ? 'bg-violet-900/30' : 'bg-[#8c49ff]/15';
+  const tagText = isLavender ? 'text-violet-300' : 'text-[#8c49ff]';
+  const tagClose = isLavender
+    ? 'text-violet-300/60 hover:text-violet-300'
+    : 'text-[#8c49ff]/60 hover:text-[#8c49ff]';
+
   return (
-    <div className="mb-6">
-      <label className="mb-2 block text-sm font-medium text-gray-300">{label}</label>
+    <div className="mb-5">
+      <label className="mb-1.5 block text-sm font-medium text-gray-300">
+        {label}
+        {required && <span className="ml-0.5 text-red-400">*</span>}
+      </label>
       <div className="flex gap-2">
         <input
           type="text"
           value={input}
           onChange={(e) => onInputChange(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           placeholder={placeholder}
-          className="flex-1 rounded-lg border border-white/10 bg-[#0f1224] px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-400 focus:border-[#8c49ff] focus:ring-2 focus:ring-[#8c49ff]/30"
+          className="flex-1 rounded-lg border border-white/10 bg-[#0f1224] px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-500 focus:border-[#8c49ff] focus:ring-2 focus:ring-[#8c49ff]/30"
         />
         <button
           type="button"
@@ -89,18 +125,18 @@ function TagInputField({
       </div>
 
       {tags.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-2.5 flex flex-wrap gap-2">
           {tags.map((tag) => (
             <span
               key={tag}
-              className="flex items-center gap-1.5 rounded-full bg-[#8c49ff]/15 px-3 py-1 text-sm font-medium text-[#8c49ff]"
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${tagBg} ${tagText}`}
             >
               {tag}
               <button
                 type="button"
                 onClick={() => onRemove(tag)}
                 aria-label={`${tag} 삭제`}
-                className="text-[#8c49ff]/70 hover:text-[#8c49ff]"
+                className={tagClose}
               >
                 ×
               </button>
@@ -112,24 +148,47 @@ function TagInputField({
   );
 }
 
-export default function InputSection({ contentType, onResult }: InputSectionProps) {
-  const [mainKeyword, setMainKeyword] = useState('');
-  const [purpose, setPurpose] = useState('');
-  const [content, setContent] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+const ESTIMATED_SECONDS = 20;
 
+export default function InputSection({ contentType, onContentTypeChange, onResult }: InputSectionProps) {
+  const mainKeyword = useTagInput();
   const subKeywords = useTagInput();
   const longTailKeywords = useTagInput();
+  const [purpose, setPurpose] = useState('');
+  const [hasContent, setHasContent] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
-  const canSubmit = mainKeyword.trim() && purpose.trim() && content.trim() && !isLoading;
+  const canSubmit = mainKeyword.tags.length > 0 && hasContent && !isLoading;
+
+  const handleContentInput = () => {
+    setHasContent(!!contentRef.current?.innerText?.trim());
+  };
+
+  const handleContentPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = Array.from(e.clipboardData.items);
+    const imageItem = items.find((item) => item.type.startsWith('image/'));
+    if (!imageItem) return;
+    e.preventDefault();
+    const file = imageItem.getAsFile();
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const src = ev.target?.result as string;
+      document.execCommand('insertHTML', false, `<img src="${src}" style="max-width:100%;height:auto;border-radius:8px;margin:8px 0;" />`);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
 
+    const content = contentRef.current?.innerText ?? '';
     const payload: AnalyzeRequestPayload = {
       keywords: {
-        main: mainKeyword.trim(),
+        main: mainKeyword.tags.join(', '),
         sub: subKeywords.tags,
         longTail: longTailKeywords.tags,
       },
@@ -140,6 +199,24 @@ export default function InputSection({ contentType, onResult }: InputSectionProp
 
     setError(null);
     setIsLoading(true);
+    setProgress(0);
+
+    const startTime = Date.now();
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      setProgress(Math.min(90, (elapsed / (ESTIMATED_SECONDS * 1000)) * 100));
+    }, 200);
+
+    const cleanup = (success: boolean) => {
+      clearInterval(timer);
+      if (success) {
+        setProgress(100);
+      } else {
+        setProgress(0);
+        setIsLoading(false);
+      }
+    };
+
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST',
@@ -153,98 +230,161 @@ export default function InputSection({ contentType, onResult }: InputSectionProp
       }
 
       const result: AnalysisResult = await response.json();
-      onResult(payload, result);
+      cleanup(true);
+
+      setTimeout(() => {
+        setProgress(0);
+        setIsLoading(false);
+        onResult(payload, result);
+      }, 400);
     } catch (err) {
+      cleanup(false);
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
-    } finally {
-      setIsLoading(false);
     }
   };
 
+  const remainingSeconds =
+    progress > 0 && progress < 90
+      ? Math.max(1, Math.round(ESTIMATED_SECONDS * (1 - progress / 100)))
+      : null;
+
   return (
-    <div className="w-full rounded-2xl border border-white/10 bg-[#161a2e] p-6 shadow-lg shadow-black/20">
-      <span className="mb-3 inline-block rounded-full bg-[#8c49ff] px-4 py-1.5 text-sm font-semibold text-white">
-        블로그 콘텐츠 입력
+    <div className="flex min-h-[600px] w-full flex-col rounded-2xl border border-white/10 bg-[#161a2e] p-6 shadow-lg shadow-black/20 lg:h-full lg:min-h-0">
+      <span className="mb-3 inline-block flex-shrink-0 rounded-full bg-lime-400 px-4 py-1.5 text-sm font-semibold text-gray-900">
+        INPUT YOUR CONTENT
       </span>
-      <p className="mb-6 text-sm text-gray-400">분석할 키워드와 목적, 원문을 입력해 주세요.</p>
 
-      {/* 메인 키워드 */}
-      <div className="mb-6">
-        <label htmlFor="main-keyword" className="mb-2 block text-sm font-medium text-gray-300">
-          메인 키워드
-        </label>
-        <input
-          id="main-keyword"
-          type="text"
-          value={mainKeyword}
-          onChange={(e) => setMainKeyword(e.target.value)}
-          placeholder="예: 클라우드 보안"
-          className="w-full rounded-lg border border-white/10 bg-[#0f1224] px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-400 focus:border-[#8c49ff] focus:ring-2 focus:ring-[#8c49ff]/30"
+      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+        {/* 콘텐츠 유형 선택 */}
+        <div className="mb-6">
+          <p className="mb-2.5 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">
+            콘텐츠 유형 선택
+          </p>
+          <div className="flex gap-2">
+            {CONTENT_TYPES.map((type) => {
+              const isActive = contentType === type.id;
+              return (
+                <button
+                  key={type.id}
+                  type="button"
+                  onClick={() => onContentTypeChange(type.id)}
+                  title={type.description}
+                  style={{
+                    backgroundColor: isActive ? type.color : 'transparent',
+                    color: isActive ? type.textColor : '#9ca3af',
+                    borderColor: isActive ? type.color : 'rgba(255,255,255,0.15)',
+                  }}
+                  className="flex-1 rounded-full border py-2 text-xs font-semibold transition hover:opacity-90"
+                >
+                  {type.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <TagInputField
+          label="메인 키워드"
+          placeholder="키워드 입력 후 Enter 또는 쉼표로 구분"
+          tags={mainKeyword.tags}
+          input={mainKeyword.input}
+          onInputChange={mainKeyword.setInput}
+          onKeyDown={mainKeyword.handleKeyDown}
+          onPaste={mainKeyword.handlePaste}
+          onAdd={mainKeyword.add}
+          onRemove={mainKeyword.remove}
+          required
+          tagVariant="lavender"
         />
-      </div>
 
-      <TagInputField
-        label="서브 키워드"
-        placeholder="키워드 입력 후 Enter"
-        tags={subKeywords.tags}
-        input={subKeywords.input}
-        onInputChange={subKeywords.setInput}
-        onKeyDown={subKeywords.handleKeyDown}
-        onAdd={subKeywords.add}
-        onRemove={subKeywords.remove}
-      />
-
-      <TagInputField
-        label="롱테일 키워드"
-        placeholder="키워드 입력 후 Enter"
-        tags={longTailKeywords.tags}
-        input={longTailKeywords.input}
-        onInputChange={longTailKeywords.setInput}
-        onKeyDown={longTailKeywords.handleKeyDown}
-        onAdd={longTailKeywords.add}
-        onRemove={longTailKeywords.remove}
-      />
-
-      {/* 목적 */}
-      <div className="mb-6">
-        <label htmlFor="purpose" className="mb-2 block text-sm font-medium text-gray-300">
-          목적
-        </label>
-        <input
-          id="purpose"
-          type="text"
-          value={purpose}
-          onChange={(e) => setPurpose(e.target.value)}
-          placeholder="예: 리드 생성, 브랜드 인지도 향상"
-          className="w-full rounded-lg border border-white/10 bg-[#0f1224] px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-400 focus:border-[#8c49ff] focus:ring-2 focus:ring-[#8c49ff]/30"
+        <TagInputField
+          label="서브 키워드"
+          placeholder="키워드 입력 후 Enter 또는 쉼표로 구분"
+          tags={subKeywords.tags}
+          input={subKeywords.input}
+          onInputChange={subKeywords.setInput}
+          onKeyDown={subKeywords.handleKeyDown}
+          onPaste={subKeywords.handlePaste}
+          onAdd={subKeywords.add}
+          onRemove={subKeywords.remove}
+          tagVariant="lavender"
         />
-      </div>
 
-      {/* 원문 입력 */}
-      <div className="mb-6">
-        <label htmlFor="content-input" className="mb-2 block text-sm font-medium text-gray-300">
-          블로그 원문
-        </label>
-        <textarea
-          id="content-input"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="분석할 블로그 본문을 입력하세요."
-          rows={10}
-          className="w-full resize-none rounded-lg border border-white/10 bg-[#0f1224] px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-400 focus:border-[#8c49ff] focus:ring-2 focus:ring-[#8c49ff]/30"
+        <TagInputField
+          label="롱테일 키워드"
+          placeholder="키워드 입력 후 Enter 또는 쉼표로 구분"
+          tags={longTailKeywords.tags}
+          input={longTailKeywords.input}
+          onInputChange={longTailKeywords.setInput}
+          onKeyDown={longTailKeywords.handleKeyDown}
+          onPaste={longTailKeywords.handlePaste}
+          onAdd={longTailKeywords.add}
+          onRemove={longTailKeywords.remove}
+          tagVariant="lavender"
         />
+
+        {/* 목적 */}
+        <div className="mb-5">
+          <label htmlFor="purpose" className="mb-1.5 block text-sm font-medium text-gray-300">
+            목적
+          </label>
+          <input
+            id="purpose"
+            type="text"
+            value={purpose}
+            onChange={(e) => setPurpose(e.target.value)}
+            placeholder="예: 리드 생성, 브랜드 인지도 향상"
+            className="w-full rounded-lg border border-white/10 bg-[#0f1224] px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-500 focus:border-[#8c49ff] focus:ring-2 focus:ring-[#8c49ff]/30"
+          />
+        </div>
+
+        {/* 원문 입력 */}
+        <div className="mb-5">
+          <label className="mb-1.5 block text-sm font-medium text-gray-300">
+            콘텐츠 본문<span className="ml-0.5 text-red-400">*</span>
+          </label>
+          <div
+            ref={contentRef}
+            contentEditable
+            suppressContentEditableWarning
+            onInput={handleContentInput}
+            onPaste={handleContentPaste}
+            data-placeholder="평가할 콘텐츠를 입력하세요. (이미지 붙여넣기 가능)"
+            className="min-h-[140px] w-full rounded-lg border border-white/10 bg-[#0f1224] px-3 py-2 text-sm text-white outline-none transition focus:border-[#8c49ff] focus:ring-2 focus:ring-[#8c49ff]/30 [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded"
+          />
+        </div>
+
+        {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+
+        {/* 진행 로딩바 */}
+        {isLoading && (
+          <div className="mb-4">
+            <div className="mb-1.5 flex items-center justify-between text-xs text-gray-400">
+              <span>분석 중... {Math.round(progress)}%</span>
+              <span>
+                {remainingSeconds !== null
+                  ? `예상 ${remainingSeconds}초 남음`
+                  : '완료 대기 중...'}
+              </span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${progress}%`, background: 'linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e)' }}
+              />
+            </div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!canSubmit}
+          className="w-full rounded-lg bg-[#8c49ff] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#7a3ce6] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-400"
+        >
+          {isLoading ? '분석 중...' : '평가 시작'}
+        </button>
       </div>
-
-      {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
-
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={!canSubmit}
-        className="w-full rounded-lg bg-[#8c49ff] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#7a3ce6] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-400"
-      >
-        {isLoading ? '분석 중...' : '평가 시작'}
-      </button>
     </div>
   );
 }

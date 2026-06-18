@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'U+ Content Developer',
+  title: 'U+ Enterprise Content LAB',
   description: 'SEO/GEO 분석 기반 블로그 콘텐츠 최적화 도구',
 };
 
