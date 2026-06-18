@@ -137,6 +137,9 @@ export default function Home() {
   const [htmlGenProgress, setHtmlGenProgress] = useState(0);
   // GEO HTML 보존용 ref (재평가 시 복원)
   const geoHtmlRef = useRef('');
+  // 재평가 중단용 refs
+  const reevaluateAbortRef = useRef<AbortController | null>(null);
+  const reevaluateTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const handleResult = (nextPayload: AnalyzeRequestPayload, nextResult: AnalysisResult) => {
     setPayload(nextPayload);
@@ -209,19 +212,36 @@ export default function Home() {
     }
   };
 
+  const clearReevaluateTimer = () => {
+    if (reevaluateTimerRef.current) {
+      clearInterval(reevaluateTimerRef.current);
+      reevaluateTimerRef.current = null;
+    }
+  };
+
+  const handleReevaluateStop = () => {
+    clearReevaluateTimer();
+    reevaluateAbortRef.current?.abort();
+    setIsReevaluating(false);
+    setReevaluateProgress(0);
+  };
+
   const handleReevaluate = async () => {
     if (!payload || reevaluateCount >= 5) return;
     setIsReevaluating(true);
     setReevaluateProgress(0);
 
+    const controller = new AbortController();
+    reevaluateAbortRef.current = controller;
+
     const startTime = Date.now();
-    const timer = setInterval(() => {
+    reevaluateTimerRef.current = setInterval(() => {
       const elapsed = Date.now() - startTime;
       setReevaluateProgress(Math.min(90, (elapsed / 20000) * 100));
     }, 200);
 
     const cleanup = (success: boolean) => {
-      clearInterval(timer);
+      clearReevaluateTimer();
       setReevaluateProgress(success ? 100 : 0);
     };
 
@@ -230,6 +250,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
       if (response.ok) {
         const nextResult: AnalysisResult = await response.json();
@@ -239,7 +260,6 @@ export default function Home() {
           setIsReevaluating(false);
           setResult(nextResult);
           setReevaluateCount((count) => count + 1);
-          // GEO HTML 복원: 재평가가 기존 GEO HTML을 덮어쓰지 않도록 보존
           const savedGeoHtml = geoHtmlRef.current;
           if (savedGeoHtml) {
             setAppliedItems([]);
@@ -251,7 +271,11 @@ export default function Home() {
         cleanup(false);
         setIsReevaluating(false);
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        clearReevaluateTimer();
+        return; // handleReevaluateStop이 상태 처리 완료
+      }
       cleanup(false);
       setIsReevaluating(false);
     }
@@ -300,6 +324,7 @@ export default function Home() {
               isReevaluating={isReevaluating}
               reevaluateProgress={reevaluateProgress}
               onReevaluate={handleReevaluate}
+              onReevaluateStop={handleReevaluateStop}
               isInitializing={isGeneratingGeoHtml}
               isInitializingProgress={htmlGenProgress}
             />

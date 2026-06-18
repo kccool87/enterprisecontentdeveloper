@@ -16,6 +16,7 @@ interface ResultViewerProps {
   isInitializing?: boolean;
   isInitializingProgress?: number;
   onReevaluate: () => void;
+  onReevaluateStop: () => void;
 }
 
 function stripDiffHighlight(html: string): string {
@@ -40,6 +41,7 @@ export default function ResultViewer({
   isInitializing = false,
   isInitializingProgress = 0,
   onReevaluate,
+  onReevaluateStop,
 }: ResultViewerProps) {
   const [previewCopied, setPreviewCopied] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
@@ -49,7 +51,8 @@ export default function ResultViewer({
   const [instructionError, setInstructionError] = useState<string | null>(null);
   const [showHtmlModal, setShowHtmlModal] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
-  const reevaluateDisabled = isReevaluating || reevaluateCount >= maxReevaluate;
+  // 재평가 중엔 버튼이 '중단' 역할 → 비활성화하지 않음
+  const reevaluateDisabled = !isReevaluating && reevaluateCount >= maxReevaluate;
 
   // previewHtml이 바뀌거나 isInitializing이 false로 전환될 때 DOM에 직접 주입.
   // isInitializing=true 동안 previewRef div가 DOM에서 사라지므로, 로딩 종료 시
@@ -174,11 +177,16 @@ export default function ResultViewer({
             </button>
             <button
               type="button"
-              onClick={onReevaluate}
+              onClick={isReevaluating ? onReevaluateStop : onReevaluate}
               disabled={reevaluateDisabled}
-              className="rounded-lg border border-[#8c49ff] px-4 py-2 text-sm font-medium text-[#8c49ff] transition hover:bg-[#8c49ff]/15 disabled:cursor-not-allowed disabled:border-white/10 disabled:text-gray-400"
+              className={`rounded-lg border px-4 py-2 text-sm font-medium transition
+                disabled:cursor-not-allowed disabled:border-white/10 disabled:text-gray-400
+                ${isReevaluating
+                  ? 'border-red-500 text-red-400 hover:bg-red-500/15'
+                  : 'border-[#8c49ff] text-[#8c49ff] hover:bg-[#8c49ff]/15'
+                }`}
             >
-              {isReevaluating ? '재평가 중...' : `재평가 (${reevaluateCount}/${maxReevaluate})`}
+              {isReevaluating ? '평가 중단' : `재평가 (${reevaluateCount}/${maxReevaluate})`}
             </button>
           </div>
         </div>
