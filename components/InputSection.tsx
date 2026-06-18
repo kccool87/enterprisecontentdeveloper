@@ -157,11 +157,21 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
   const [purpose, setPurpose] = useState('');
   const [hasContent, setHasContent] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const canSubmit = mainKeyword.tags.length > 0 && hasContent && !isLoading;
+
+  const clearTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
 
   const handleContentInput = () => {
     setHasContent(!!contentRef.current?.innerText?.trim());
@@ -182,6 +192,16 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
     reader.readAsDataURL(file);
   };
 
+  // 평가 중단
+  const handleStop = () => {
+    clearTimer();
+    abortControllerRef.current?.abort();
+    setIsLoading(false);
+    setIsPaused(true);
+    // progress는 현재 값에서 멈춤 (frozen)
+  };
+
+  // 평가 시작 / 재시작
   const handleSubmit = async () => {
     if (!canSubmit) return;
 
@@ -198,17 +218,21 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
     };
 
     setError(null);
+    setIsPaused(false);
     setIsLoading(true);
     setProgress(0);
 
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     const startTime = Date.now();
-    const timer = setInterval(() => {
+    timerRef.current = setInterval(() => {
       const elapsed = Date.now() - startTime;
       setProgress(Math.min(90, (elapsed / (ESTIMATED_SECONDS * 1000)) * 100));
     }, 200);
 
     const cleanup = (success: boolean) => {
-      clearInterval(timer);
+      clearTimer();
       if (success) {
         setProgress(100);
       } else {
@@ -222,6 +246,7 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -238,6 +263,11 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
         onResult(payload, result);
       }, 400);
     } catch (err) {
+      // AbortError: handleStop이 이미 상태 처리 완료
+      if (err instanceof Error && err.name === 'AbortError') {
+        clearTimer();
+        return;
+      }
       cleanup(false);
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
     }
@@ -256,10 +286,9 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
         INPUT YOUR CONTENT
       </span>
 
-      {/* 스크롤 영역 — 상단 필드 + 본문 textarea */}
+      {/* 스크롤 영역 */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
 
-        {/* 고정 높이 상단 필드들 */}
         <div className="flex-shrink-0">
           {/* 콘텐츠 유형 선택 */}
           <div className="mb-6">
@@ -363,36 +392,75 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
 
       </div>
 
-      {/* 하단 고정 영역 — 에러, 로딩바, 평가 시작 버튼 */}
+      {/* 하단 고정 영역 */}
+
+      {/* 에러 */}
       {error && <p className="mt-3 flex-shrink-0 text-sm text-red-400">{error}</p>}
 
-      {isLoading && (
+      {/* 중단 메시지 */}
+      {isPaused && !isLoading && (
+        <p className="mt-3 flex-shrink-0 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-400">
+          ⏸ 평가가 중단되어있습니다. 평가 시작 버튼을 눌러 재시작하세요.
+        </p>
+      )}
+
+      {/* 로딩바 — 분석 중 or 중단(frozen) */}
+      {(isLoading || isPaused) && (
         <div className="mt-3 flex-shrink-0">
           <div className="mb-1.5 flex items-center justify-between text-xs text-gray-400">
-            <span>분석 중... {Math.round(progress)}%</span>
             <span>
-              {remainingSeconds !== null
+              {isLoading
+                ? `분석 중... ${Math.round(progress)}%`
+                : `중단됨 ${Math.round(progress)}%`}
+            </span>
+            <span>
+              {isLoading && remainingSeconds !== null
                 ? `예상 ${remainingSeconds}초 남음`
-                : '완료 대기 중...'}
+                : isLoading
+                ? '완료 대기 중...'
+                : '—'}
             </span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
             <div
               className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${progress}%`, background: 'linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e)' }}
+              style={{
+                width: `${progress}%`,
+                background: isLoading
+                  ? 'linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e)'
+                  : 'linear-gradient(to right, #6b7280, #9ca3af)', // 중단 시 회색
+              }}
             />
           </div>
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={!canSubmit}
-        className="mt-3 flex-shrink-0 w-full rounded-lg bg-[#8c49ff] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#7a3ce6] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-400"
-      >
-        {isLoading ? '분석 중...' : '평가 시작'}
-      </button>
+      {/* 버튼 2개 */}
+      <div className="mt-3 flex flex-shrink-0 gap-2">
+        {/* 평가 중단 (빨간색, 분석 중일 때만 활성) */}
+        <button
+          type="button"
+          onClick={handleStop}
+          disabled={!isLoading}
+          className="flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition
+            bg-red-600 text-white hover:bg-red-500
+            disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-500"
+        >
+          평가 중단
+        </button>
+
+        {/* 평가 시작 / 재시작 (초록색) */}
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!canSubmit}
+          className="flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition
+            bg-[#22c55e] text-white hover:bg-[#16a34a]
+            disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-400"
+        >
+          {isPaused ? '재시작' : '평가 시작'}
+        </button>
+      </div>
 
     </div>
   );
