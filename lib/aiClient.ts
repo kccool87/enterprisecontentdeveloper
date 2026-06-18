@@ -26,7 +26,7 @@ export async function callAI({ systemPrompt, userPrompt, json }: AICallOptions):
   if (!apiKey) throw new AIError('ANTHROPIC_API_KEY 환경변수가 설정되지 않았습니다.', 500, 'claude');
 
   const client = new Anthropic({ apiKey });
-  const model = process.env.CLAUDE_MODEL || 'claude-sonnet-4-6';
+  const model = process.env.CLAUDE_MODEL || 'claude-opus-4-5';
 
   // JSON 모드: 응답이 반드시 JSON만 포함하도록 시스템 프롬프트 강화
   const effectiveSystemPrompt = json
@@ -36,7 +36,7 @@ export async function callAI({ systemPrompt, userPrompt, json }: AICallOptions):
   const run = async () => {
     const message = await client.messages.create({
       model,
-      max_tokens: 16384,
+      max_tokens: 8192,
       system: effectiveSystemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     });
@@ -83,8 +83,9 @@ export async function callAI({ systemPrompt, userPrompt, json }: AICallOptions):
         }
       }
 
-      if (status === 429) message = 'Claude API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';
+      if (status === 400) message = 'Claude API 요청 오류 (400) — 모델 ID 또는 요청 형식을 확인하세요.';
       else if (status === 401) message = 'Claude API 키가 유효하지 않습니다.';
+      else if (status === 429) message = 'Claude API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';
       else message = `Claude API 오류 (${status})`;
 
       console.warn('[Claude]', status, error.message?.substring(0, 200));
