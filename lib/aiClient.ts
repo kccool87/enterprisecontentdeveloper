@@ -26,7 +26,7 @@ export async function callAI({ systemPrompt, userPrompt, json }: AICallOptions):
   if (!apiKey) throw new AIError('ANTHROPIC_API_KEY 환경변수가 설정되지 않았습니다.', 500, 'claude');
 
   const client = new Anthropic({ apiKey });
-  const model = process.env.CLAUDE_MODEL || 'claude-opus-4-5';
+  const model = process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022';
 
   // JSON 모드: 응답이 반드시 JSON만 포함하도록 시스템 프롬프트 강화
   const effectiveSystemPrompt = json
