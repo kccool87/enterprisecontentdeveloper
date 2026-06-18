@@ -250,141 +250,150 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
 
   return (
     <div className="flex min-h-[600px] w-full flex-col rounded-2xl border border-white/10 bg-[#161a2e] p-6 shadow-lg shadow-black/20 lg:h-full lg:min-h-0">
+
+      {/* 상단 고정 뱃지 */}
       <span className="mb-3 block flex-shrink-0 rounded-full bg-lime-400 px-4 py-1.5 text-center text-sm font-semibold text-gray-900">
         INPUT YOUR CONTENT
       </span>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-        {/* 콘텐츠 유형 선택 */}
-        <div className="mb-6">
-          <p className="mb-2.5 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">
-            콘텐츠 유형 선택
-          </p>
-          <div className="flex gap-2">
-            {CONTENT_TYPES.map((type) => {
-              const isActive = contentType === type.id;
-              return (
-                <button
-                  key={type.id}
-                  type="button"
-                  onClick={() => onContentTypeChange(type.id)}
-                  title={type.description}
-                  style={{
-                    backgroundColor: isActive ? type.color : 'transparent',
-                    color: isActive ? type.textColor : '#9ca3af',
-                    borderColor: isActive ? type.color : 'rgba(255,255,255,0.15)',
-                  }}
-                  className="flex-1 rounded-full border py-2 text-xs font-semibold transition hover:opacity-90"
-                >
-                  {type.label}
-                </button>
-              );
-            })}
+      {/* 스크롤 영역 — 상단 필드 + 본문 textarea */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
+
+        {/* 고정 높이 상단 필드들 */}
+        <div className="flex-shrink-0">
+          {/* 콘텐츠 유형 선택 */}
+          <div className="mb-6">
+            <p className="mb-2.5 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">
+              콘텐츠 유형 선택
+            </p>
+            <div className="flex gap-2">
+              {CONTENT_TYPES.map((type) => {
+                const isActive = contentType === type.id;
+                return (
+                  <button
+                    key={type.id}
+                    type="button"
+                    onClick={() => onContentTypeChange(type.id)}
+                    title={type.description}
+                    style={{
+                      backgroundColor: isActive ? type.color : 'transparent',
+                      color: isActive ? type.textColor : '#9ca3af',
+                      borderColor: isActive ? type.color : 'rgba(255,255,255,0.15)',
+                    }}
+                    className="flex-1 rounded-full border py-2 text-xs font-semibold transition hover:opacity-90"
+                  >
+                    {type.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        <TagInputField
-          label="메인 키워드"
-          placeholder="키워드 입력 후 Enter 또는 쉼표로 구분"
-          tags={mainKeyword.tags}
-          input={mainKeyword.input}
-          onInputChange={mainKeyword.setInput}
-          onKeyDown={mainKeyword.handleKeyDown}
-          onPaste={mainKeyword.handlePaste}
-          onAdd={mainKeyword.add}
-          onRemove={mainKeyword.remove}
-          required
-          tagVariant="lavender"
-        />
-
-        <TagInputField
-          label="서브 키워드"
-          placeholder="키워드 입력 후 Enter 또는 쉼표로 구분"
-          tags={subKeywords.tags}
-          input={subKeywords.input}
-          onInputChange={subKeywords.setInput}
-          onKeyDown={subKeywords.handleKeyDown}
-          onPaste={subKeywords.handlePaste}
-          onAdd={subKeywords.add}
-          onRemove={subKeywords.remove}
-          tagVariant="lavender"
-        />
-
-        <TagInputField
-          label="롱테일 키워드"
-          placeholder="키워드 입력 후 Enter 또는 쉼표로 구분"
-          tags={longTailKeywords.tags}
-          input={longTailKeywords.input}
-          onInputChange={longTailKeywords.setInput}
-          onKeyDown={longTailKeywords.handleKeyDown}
-          onPaste={longTailKeywords.handlePaste}
-          onAdd={longTailKeywords.add}
-          onRemove={longTailKeywords.remove}
-          tagVariant="lavender"
-        />
-
-        {/* 목적 */}
-        <div className="mb-5">
-          <label htmlFor="purpose" className="mb-1.5 block text-sm font-medium text-gray-300">
-            목적
-          </label>
-          <input
-            id="purpose"
-            type="text"
-            value={purpose}
-            onChange={(e) => setPurpose(e.target.value)}
-            placeholder="예: 리드 생성, 브랜드 인지도 향상"
-            className="w-full rounded-lg border border-white/10 bg-[#0f1224] px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-500 focus:border-[#8c49ff] focus:ring-2 focus:ring-[#8c49ff]/30"
+          <TagInputField
+            label="메인 키워드"
+            placeholder="키워드 입력 후 Enter 또는 쉼표로 구분"
+            tags={mainKeyword.tags}
+            input={mainKeyword.input}
+            onInputChange={mainKeyword.setInput}
+            onKeyDown={mainKeyword.handleKeyDown}
+            onPaste={mainKeyword.handlePaste}
+            onAdd={mainKeyword.add}
+            onRemove={mainKeyword.remove}
+            required
+            tagVariant="lavender"
           />
-        </div>
 
-        {/* 원문 입력 */}
-        <div className="mb-5">
+          <TagInputField
+            label="서브 키워드"
+            placeholder="키워드 입력 후 Enter 또는 쉼표로 구분"
+            tags={subKeywords.tags}
+            input={subKeywords.input}
+            onInputChange={subKeywords.setInput}
+            onKeyDown={subKeywords.handleKeyDown}
+            onPaste={subKeywords.handlePaste}
+            onAdd={subKeywords.add}
+            onRemove={subKeywords.remove}
+            tagVariant="lavender"
+          />
+
+          <TagInputField
+            label="롱테일 키워드"
+            placeholder="키워드 입력 후 Enter 또는 쉼표로 구분"
+            tags={longTailKeywords.tags}
+            input={longTailKeywords.input}
+            onInputChange={longTailKeywords.setInput}
+            onKeyDown={longTailKeywords.handleKeyDown}
+            onPaste={longTailKeywords.handlePaste}
+            onAdd={longTailKeywords.add}
+            onRemove={longTailKeywords.remove}
+            tagVariant="lavender"
+          />
+
+          {/* 목적 */}
+          <div className="mb-4">
+            <label htmlFor="purpose" className="mb-1.5 block text-sm font-medium text-gray-300">
+              목적
+            </label>
+            <input
+              id="purpose"
+              type="text"
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              placeholder="예: 리드 생성, 브랜드 인지도 향상"
+              className="w-full rounded-lg border border-white/10 bg-[#0f1224] px-3 py-2 text-sm text-white outline-none transition placeholder:text-gray-500 focus:border-[#8c49ff] focus:ring-2 focus:ring-[#8c49ff]/30"
+            />
+          </div>
+
+          {/* 콘텐츠 본문 라벨 */}
           <label className="mb-1.5 block text-sm font-medium text-gray-300">
             콘텐츠 본문<span className="ml-0.5 text-red-400">*</span>
           </label>
-          <div
-            ref={contentRef}
-            contentEditable
-            suppressContentEditableWarning
-            onInput={handleContentInput}
-            onPaste={handleContentPaste}
-            data-placeholder="평가할 콘텐츠를 입력하세요. (이미지 붙여넣기 가능)"
-            className="min-h-[140px] w-full rounded-lg border border-white/10 bg-[#0f1224] px-3 py-2 text-sm text-white outline-none transition focus:border-[#8c49ff] focus:ring-2 focus:ring-[#8c49ff]/30 [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded"
-          />
         </div>
 
-        {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+        {/* 본문 입력 — 버튼 위까지 늘어나는 flex-1 */}
+        <div
+          ref={contentRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={handleContentInput}
+          onPaste={handleContentPaste}
+          data-placeholder="평가할 콘텐츠를 입력하세요. (이미지 붙여넣기 가능)"
+          className="flex-1 min-h-[140px] w-full overflow-y-auto rounded-lg border border-white/10 bg-[#0f1224] px-3 py-2 text-sm text-white outline-none transition focus:border-[#8c49ff] focus:ring-2 focus:ring-[#8c49ff]/30 [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded"
+        />
 
-        {/* 진행 로딩바 */}
-        {isLoading && (
-          <div className="mb-4">
-            <div className="mb-1.5 flex items-center justify-between text-xs text-gray-400">
-              <span>분석 중... {Math.round(progress)}%</span>
-              <span>
-                {remainingSeconds !== null
-                  ? `예상 ${remainingSeconds}초 남음`
-                  : '완료 대기 중...'}
-              </span>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full transition-all duration-300"
-                style={{ width: `${progress}%`, background: 'linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e)' }}
-              />
-            </div>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-          className="w-full rounded-lg bg-[#8c49ff] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#7a3ce6] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-400"
-        >
-          {isLoading ? '분석 중...' : '평가 시작'}
-        </button>
       </div>
+
+      {/* 하단 고정 영역 — 에러, 로딩바, 평가 시작 버튼 */}
+      {error && <p className="mt-3 flex-shrink-0 text-sm text-red-400">{error}</p>}
+
+      {isLoading && (
+        <div className="mt-3 flex-shrink-0">
+          <div className="mb-1.5 flex items-center justify-between text-xs text-gray-400">
+            <span>분석 중... {Math.round(progress)}%</span>
+            <span>
+              {remainingSeconds !== null
+                ? `예상 ${remainingSeconds}초 남음`
+                : '완료 대기 중...'}
+            </span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className="h-full rounded-full transition-all duration-300"
+              style={{ width: `${progress}%`, background: 'linear-gradient(to right, #ef4444, #f97316, #eab308, #22c55e)' }}
+            />
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={handleSubmit}
+        disabled={!canSubmit}
+        className="mt-3 flex-shrink-0 w-full rounded-lg bg-[#8c49ff] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#7a3ce6] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-gray-400"
+      >
+        {isLoading ? '분석 중...' : '평가 시작'}
+      </button>
+
     </div>
   );
 }
