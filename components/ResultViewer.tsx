@@ -51,14 +51,15 @@ export default function ResultViewer({
   const previewRef = useRef<HTMLDivElement>(null);
   const reevaluateDisabled = isReevaluating || reevaluateCount >= maxReevaluate;
 
-  // previewHtml이 외부에서 바뀔 때(GEO HTML 완성, 개선안 반영 등) DOM에 직접 주입.
-  // 사용자 입력 시에는 previewHtml state가 변하지 않으므로 이 effect가 실행되지 않아
-  // cursor 위치가 보존된다.
+  // previewHtml이 바뀌거나 isInitializing이 false로 전환될 때 DOM에 직접 주입.
+  // isInitializing=true 동안 previewRef div가 DOM에서 사라지므로, 로딩 종료 시
+  // previewHtml 값이 동일해도 effect를 재실행해야 새로 마운트된 div에 내용을 채울 수 있다.
+  // (GEO HTML 실패 → previewHtml 불변 → 의존성에 isInitializing 없으면 innerHTML 미설정)
   useLayoutEffect(() => {
     if (previewRef.current) {
       previewRef.current.innerHTML = previewHtml;
     }
-  }, [previewHtml]);
+  }, [previewHtml, isInitializing]);
 
   const handleCopyPreview = async () => {
     await navigator.clipboard.writeText(previewRef.current?.innerText ?? '');
