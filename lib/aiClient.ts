@@ -44,8 +44,16 @@ async function callGemini({ systemPrompt, userPrompt, json }: AICallOptions): Pr
     ...(json ? { generationConfig: { responseMimeType: 'application/json' } } : {}),
   });
 
-  const toAIError = (e: GoogleGenerativeAIFetchError) =>
-    new AIError(e.message || 'Gemini API 오류', e.status ?? 502, 'gemini');
+  const toAIError = (e: GoogleGenerativeAIFetchError) => {
+    // 원본 에러는 서버 로그에만 남기고, 클라이언트에는 친화적 메시지 전달
+    const status = e.status ?? 502;
+    let message: string;
+    if (status === 429) message = 'Gemini API 일일 사용량 한도를 초과했습니다.';
+    else if (status === 503) message = 'Gemini 서버가 일시적으로 과부하 상태입니다.';
+    else message = `Gemini API 오류 (${status})`;
+    console.warn('[Gemini]', status, e.message?.substring(0, 200));
+    return new AIError(message, status, 'gemini');
+  };
 
   const generate = () => model.generateContent(userPrompt);
 
@@ -70,7 +78,10 @@ async function callGemini({ systemPrompt, userPrompt, json }: AICallOptions): Pr
 
 async function callOpenAI({ systemPrompt, userPrompt, json }: AICallOptions): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new AIError('OPENAI_API_KEY 환경변수가 설정되지 않았습니다.', 500, 'openai');
+  if (!apiKey) {
+    console.warn('[OpenAI] OPENAI_API_KEY 환경변수가 없습니다. .env.local 또는 Vercel 환경변수를 확인하세요.');
+    throw new AIError('OPENAI_API_KEY 환경변수가 설정되지 않았습니다.', 500, 'openai');
+  }
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -90,11 +101,15 @@ async function callOpenAI({ systemPrompt, userPrompt, json }: AICallOptions): Pr
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new AIError(
-      (err as { error?: { message?: string } }).error?.message || 'OpenAI API 오류',
-      response.status,
-      'openai',
-    );
+    const rawMsg = (err as { error?: { message?: string } }).error?.message || '';
+    const status = response.status;
+    let message: string;
+    if (status === 429) message = 'OpenAI API 사용량 한도를 초과했습니다.';
+    else if (status === 401) message = 'OpenAI API 키가 유효하지 않습니다.';
+    else if (status === 402) message = 'OpenAI 크레딧이 부족합니다.';
+    else message = `OpenAI API 오류 (${status})`;
+    console.warn('[OpenAI]', status, rawMsg.substring(0, 200));
+    throw new AIError(message, status, 'openai');
   }
 
   const data = await response.json() as { choices: { message: { content: string } }[] };
@@ -165,23 +180,43 @@ export async function callAI(options: AICallOptions): Promise<string> {
   );
 
   if (succeeded.length === 0) {
-    // 둘 다 실패 — 가장 의미 있는 에러 우선
-    const errors = [geminiResult, openaiResult]
-      .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-      .map((r) => r.reason as unknown);
+    const geminiErr = geminiResult.status === 'rejected' ? (geminiResult.reason as unknown) : null;
+    const openaiErr = openaiResult.status === 'rejected' ? (openaiResult.reason as unknown) : null;
+    const geminiStatus = geminiErr instanceof AIError ? geminiErr.status : '?';
+    const openaiStatus = openaiErr instanceof AIError ? openaiErr.status : '?';
 
-    const quotaErr = errors.find((e) => e instanceof AIError && e.status === 429);
-    if (quotaErr) throw quotaErr;
+    console.error(`[aiClient] 두 API 모두 실패 — Gemini: ${geminiStatus}, OpenAI: ${openaiStatus}`);
 
-    const aiErr = errors.find((e) => e instanceof AIError);
-    if (aiErr) throw aiErr;
+    // 둘 다 할당량 초과
+    if (geminiStatus === 429 && openaiStatus === 429) {
+      throw new AIError(
+        'Gemini와 OpenAI 모두 사용량 한도를 초과했습니다. 내일 다시 시도하거나 API 플랜을 확인해주세요.',
+        429, 'both',
+      );
+    }
 
-    throw new AIError('두 API 모두 응답에 실패했습니다.', 502, 'both');
+    // Gemini 할당량 초과 + OpenAI 키/크레딧 문제
+    if (geminiStatus === 429 && (openaiStatus === 401 || openaiStatus === 402 || openaiStatus === 500)) {
+      throw new AIError(
+        'Gemini 일일 한도 초과 + OpenAI API 키 또는 크레딧 문제가 발생했습니다. OpenAI 설정을 확인해주세요.',
+        429, 'both',
+      );
+    }
+
+    // 일반 실패
+    const primary = geminiErr instanceof AIError ? geminiErr : openaiErr instanceof AIError ? openaiErr : null;
+    if (primary instanceof AIError) throw primary;
+
+    throw new AIError('AI API 호출에 실패했습니다. 잠시 후 다시 시도해주세요.', 502, 'both');
   }
 
   if (succeeded.length === 1) {
     const provider = geminiResult.status === 'fulfilled' ? 'Gemini' : 'OpenAI';
-    console.log(`[aiClient] ${provider}만 성공 — 해당 결과 사용`);
+    const failedProvider = provider === 'Gemini' ? 'OpenAI' : 'Gemini';
+    const failedResult = geminiResult.status === 'rejected' ? geminiResult : openaiResult;
+    const failedErr = failedResult.status === 'rejected' ? failedResult.reason : null;
+    const failedStatus = failedErr instanceof AIError ? failedErr.status : '?';
+    console.warn(`[aiClient] ${failedProvider} 실패(${failedStatus}) → ${provider} 결과 사용`);
     return succeeded[0].value;
   }
 
