@@ -49,15 +49,14 @@ export default function ResultViewer({
   const [instructionError, setInstructionError] = useState<string | null>(null);
   const [showHtmlModal, setShowHtmlModal] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
-  const lastPreviewHtmlRef = useRef('');
   const reevaluateDisabled = isReevaluating || reevaluateCount >= maxReevaluate;
 
-  // previewHtml이 외부에서 변경될 때만 DOM에 직접 주입
-  // (사용자가 편집 중일 때는 변경되지 않아 DOM을 건드리지 않음)
+  // previewHtml이 외부에서 바뀔 때(GEO HTML 완성, 개선안 반영 등) DOM에 직접 주입.
+  // 사용자 입력 시에는 previewHtml state가 변하지 않으므로 이 effect가 실행되지 않아
+  // cursor 위치가 보존된다.
   useLayoutEffect(() => {
-    if (previewRef.current && previewHtml !== lastPreviewHtmlRef.current) {
+    if (previewRef.current) {
       previewRef.current.innerHTML = previewHtml;
-      lastPreviewHtmlRef.current = previewHtml;
     }
   }, [previewHtml]);
 

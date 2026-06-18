@@ -6,57 +6,93 @@ import AnalysisDashboard, { AnalysisResult, AppliedImprovement } from '@/compone
 import ResultViewer from '@/components/ResultViewer';
 import { CONTENT_TYPES, type ContentType } from '@/lib/contentTypes';
 
+// 개선안 텍스트와 원문 문단의 단어 겹침 비율 (0~1)
+const REPLACE_THRESHOLD = 0.28;
+
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[.,!?()[\]]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 1);
+}
+
+function overlapRatio(paraTokens: string[], insertTokens: Set<string>): number {
+  if (insertTokens.size === 0 || paraTokens.length === 0) return 0;
+  const overlap = paraTokens.filter((w) => insertTokens.has(w)).length;
+  return overlap / Math.min(paraTokens.length, insertTokens.size);
+}
+
 function findInsertionPoint(paragraphs: string[], insertText: string, field: string): number {
   const f = field.toLowerCase();
   if (/서론|도입|시작|첫/.test(f)) return Math.min(1, paragraphs.length);
   if (/결론|마무리|끝|마지막/.test(f)) return paragraphs.length;
 
-  const queryWords = new Set(
-    `${insertText} ${field}`
-      .toLowerCase()
-      .replace(/[.,!?()[\]]/g, ' ')
-      .split(/\s+/)
-      .filter((w) => w.length > 1),
-  );
-
+  const queryWords = new Set(tokenize(`${insertText} ${field}`));
   let bestIdx = paragraphs.length;
   let bestScore = 0;
 
   paragraphs.forEach((para, i) => {
-    const paraWords = para
-      .toLowerCase()
-      .replace(/[.,!?()[\]]/g, ' ')
-      .split(/\s+/)
-      .filter((w) => w.length > 1);
-    const overlap = paraWords.filter((w) => queryWords.has(w)).length;
-    if (overlap > bestScore) {
-      bestScore = overlap;
-      bestIdx = i + 1;
-    }
+    const overlap = tokenize(para).filter((w) => queryWords.has(w)).length;
+    if (overlap > bestScore) { bestScore = overlap; bestIdx = i + 1; }
   });
 
   return bestIdx;
+}
+
+// 각 개선안을 삽입(insert) 또는 교체(replace)로 분류
+function resolveAppliedItems(
+  lines: string[],
+  appliedItems: AppliedImprovement[],
+): { replacements: Map<number, string>; insertionMap: Map<number, string[]> } {
+  const replacements = new Map<number, string>();
+  const insertionMap = new Map<number, string[]>();
+  const lineTokens = lines.map(tokenize);
+
+  appliedItems.forEach((item) => {
+    const insertWords = new Set(tokenize(item.text));
+
+    // 교체 대상 탐색: 아직 교체 예정이 아닌 문단 중 겹침이 가장 높은 것
+    let bestIdx = -1;
+    let bestScore = 0;
+    lineTokens.forEach((tokens, i) => {
+      if (replacements.has(i)) return;
+      const score = overlapRatio(tokens, insertWords);
+      if (score > bestScore) { bestScore = score; bestIdx = i; }
+    });
+
+    if (bestScore >= REPLACE_THRESHOLD && bestIdx >= 0) {
+      // 원문의 유사 문단을 개선안으로 교체
+      replacements.set(bestIdx, item.text);
+    } else {
+      // 겹침 없음 → 기존 방식으로 삽입
+      const insertIdx = findInsertionPoint(lines, item.text, item.field);
+      if (!insertionMap.has(insertIdx)) insertionMap.set(insertIdx, []);
+      insertionMap.get(insertIdx)!.push(item.text);
+    }
+  });
+
+  return { replacements, insertionMap };
 }
 
 function buildPreviewHtml(content: string, appliedItems: AppliedImprovement[]): string {
   const lines = content.split('\n').filter((line) => line.trim().length > 0);
   if (lines.length === 0) return '<p>분석할 본문이 없습니다.</p>';
 
-  const insertionMap = new Map<number, AppliedImprovement[]>();
-  appliedItems.forEach((item) => {
-    const idx = findInsertionPoint(lines, item.text, item.field);
-    if (!insertionMap.has(idx)) insertionMap.set(idx, []);
-    insertionMap.get(idx)!.push(item);
-  });
+  const { replacements, insertionMap } = resolveAppliedItems(lines, appliedItems);
 
   let result = '';
-  (insertionMap.get(0) ?? []).forEach((item) => {
-    result += `<p><span class="diff-highlight">${item.text}</span></p>`;
+  (insertionMap.get(0) ?? []).forEach((text) => {
+    result += `<p><span class="diff-highlight">${text}</span></p>`;
   });
   lines.forEach((line, i) => {
-    result += `<p>${line}</p>`;
-    (insertionMap.get(i + 1) ?? []).forEach((item) => {
-      result += `<p><span class="diff-highlight">${item.text}</span></p>`;
+    if (replacements.has(i)) {
+      result += `<p><span class="diff-highlight">${replacements.get(i)}</span></p>`;
+    } else {
+      result += `<p>${line}</p>`;
+    }
+    (insertionMap.get(i + 1) ?? []).forEach((text) => {
+      result += `<p><span class="diff-highlight">${text}</span></p>`;
     });
   });
 
@@ -71,18 +107,17 @@ function buildHtmlCode(content: string, appliedItems: AppliedImprovement[]): str
   const lines = content.split('\n').filter((line) => line.trim().length > 0);
   if (lines.length === 0) return '<article></article>';
 
-  const insertionMap = new Map<number, AppliedImprovement[]>();
-  appliedItems.forEach((item) => {
-    const idx = findInsertionPoint(lines, item.text, item.field);
-    if (!insertionMap.has(idx)) insertionMap.set(idx, []);
-    insertionMap.get(idx)!.push(item);
-  });
+  const { replacements, insertionMap } = resolveAppliedItems(lines, appliedItems);
 
   let body = '';
-  (insertionMap.get(0) ?? []).forEach((item) => { body += `  <p>${item.text}</p>\n`; });
+  (insertionMap.get(0) ?? []).forEach((text) => { body += `  <p>${text}</p>\n`; });
   lines.forEach((line, i) => {
-    body += `  <p>${line}</p>\n`;
-    (insertionMap.get(i + 1) ?? []).forEach((item) => { body += `  <p>${item.text}</p>\n`; });
+    if (replacements.has(i)) {
+      body += `  <p>${replacements.get(i)}</p>\n`;
+    } else {
+      body += `  <p>${line}</p>\n`;
+    }
+    (insertionMap.get(i + 1) ?? []).forEach((text) => { body += `  <p>${text}</p>\n`; });
   });
 
   return `<article>\n${body}</article>`;
