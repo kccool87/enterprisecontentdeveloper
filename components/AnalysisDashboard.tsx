@@ -147,8 +147,14 @@ export default function AnalysisDashboard({ result, onApply, onRemove }: Analysi
     });
   };
 
-  const selectAll = () => {
-    setSelected(new Set(improvements.map((_, i) => i)));
+  const isAllSelected = improvements.length > 0 && selected.size === improvements.length;
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(improvements.map((_, i) => i)));
+    }
   };
 
   const applyAll = () => {
@@ -221,11 +227,10 @@ export default function AnalysisDashboard({ result, onApply, onRemove }: Analysi
               <div className="flex shrink-0 gap-2">
                 <button
                   type="button"
-                  onClick={selectAll}
-                  disabled={selected.size === improvements.length}
-                  className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-medium text-gray-300 transition hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                  onClick={toggleSelectAll}
+                  className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-medium text-gray-300 transition hover:border-white/40 hover:text-white"
                 >
-                  전체 선택
+                  {isAllSelected ? '전체 해제' : '전체 선택'}
                 </button>
                 <button
                   type="button"
