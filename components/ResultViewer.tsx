@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type FocusEvent } from 'react';
+import { useRef, useState, useLayoutEffect, type FocusEvent } from 'react';
 
 interface ResultViewerProps {
   previewHtml: string;
@@ -49,7 +49,17 @@ export default function ResultViewer({
   const [instructionError, setInstructionError] = useState<string | null>(null);
   const [showHtmlModal, setShowHtmlModal] = useState(false);
   const previewRef = useRef<HTMLDivElement>(null);
+  const lastPreviewHtmlRef = useRef('');
   const reevaluateDisabled = isReevaluating || reevaluateCount >= maxReevaluate;
+
+  // previewHtml이 외부에서 변경될 때만 DOM에 직접 주입
+  // (사용자가 편집 중일 때는 변경되지 않아 DOM을 건드리지 않음)
+  useLayoutEffect(() => {
+    if (previewRef.current && previewHtml !== lastPreviewHtmlRef.current) {
+      previewRef.current.innerHTML = previewHtml;
+      lastPreviewHtmlRef.current = previewHtml;
+    }
+  }, [previewHtml]);
 
   const handleCopyPreview = async () => {
     await navigator.clipboard.writeText(previewRef.current?.innerText ?? '');
@@ -234,15 +244,13 @@ export default function ResultViewer({
                 </button>
               </div>
               <div
-                key={previewHtml}
                 ref={previewRef}
-                contentEditable={!isInitializing}
+                contentEditable
                 suppressContentEditableWarning
                 onInput={handlePreviewInput}
                 onBlur={handlePreviewBlur}
                 onPaste={handlePreviewPaste}
                 className="min-h-0 flex-1 overflow-y-auto p-4 prose prose-sm prose-invert max-w-none rounded-b-xl outline-none [&_.diff-highlight]:rounded [&_.diff-highlight]:bg-[#8c49ff]/25 [&_.diff-highlight]:px-1 [&_.diff-highlight]:py-0.5 [&_.diff-highlight]:text-violet-200 [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded"
-                dangerouslySetInnerHTML={{ __html: isInitializing ? '<p style="color:#6b7280;font-size:13px;">GEO 최적화 HTML 생성 중...</p>' : previewHtml }}
               />
             </div>
 
