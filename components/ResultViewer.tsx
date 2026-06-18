@@ -63,9 +63,16 @@ export default function ResultViewer({
     setTimeout(() => setCodeCopied(false), 2000);
   };
 
+  const handlePreviewInput = (e: React.FormEvent<HTMLDivElement>) => {
+    const rawHtml = e.currentTarget.innerHTML;
+    const cleaned = stripDiffHighlight(rawHtml);
+    onHtmlCodeChange(`<article>\n${cleaned}\n</article>`);
+    // previewHtml은 건드리지 않음 → div key가 바뀌지 않아 커서 위치 유지
+  };
+
   const handlePreviewBlur = (e: FocusEvent<HTMLDivElement>) => {
     const rawHtml = e.currentTarget.innerHTML;
-    onPreviewHtmlChange(rawHtml);
+    onPreviewHtmlChange(rawHtml); // blur 시에만 state 동기화 (remount 트리거)
     const cleaned = stripDiffHighlight(rawHtml);
     onHtmlCodeChange(`<article>\n${cleaned}\n</article>`);
   };
@@ -231,6 +238,7 @@ export default function ResultViewer({
                 ref={previewRef}
                 contentEditable={!isInitializing}
                 suppressContentEditableWarning
+                onInput={handlePreviewInput}
                 onBlur={handlePreviewBlur}
                 onPaste={handlePreviewPaste}
                 className="min-h-0 flex-1 overflow-y-auto p-4 prose prose-sm prose-invert max-w-none rounded-b-xl outline-none [&_.diff-highlight]:rounded [&_.diff-highlight]:bg-[#8c49ff]/25 [&_.diff-highlight]:px-1 [&_.diff-highlight]:py-0.5 [&_.diff-highlight]:text-violet-200 [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded"
