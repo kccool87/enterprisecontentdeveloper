@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI, GoogleGenerativeAIFetchError } from '@google/generative-ai';
+import { callAI, AIError } from '@/lib/aiClient';
 import { getContentTypeMeta, type ContentType } from '@/lib/contentTypes';
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 const SYSTEM_PROMPT = `너는 B2B 블로그 콘텐츠 전략 전문가야. 제공된 콘텐츠를 분석해서 반드시 아래 JSON 형식으로만 응답해:
 { "scores": { "total": number, "quality": number, "seo": number, "geo": number }, "improvements": [{ "field": string, "reason": string, "suggestion": string, "insertText": string }] }
@@ -68,21 +64,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'GEMINI_API_KEY 환경변수가 설정되지 않았습니다.' },
-        { status: 500 }
-      );
-    }
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-      systemInstruction: SYSTEM_PROMPT,
-      generationConfig: { responseMimeType: 'application/json' },
-    });
-
     const contentTypeMeta = contentType ? getContentTypeMeta(contentType) : null;
 
     const userPrompt = `
@@ -106,48 +87,30 @@ ${purpose}
 ${content}
 `.trim();
 
-    let result;
-    try {
-      result = await model.generateContent(userPrompt);
-    } catch (error) {
-      const isOverloaded = error instanceof GoogleGenerativeAIFetchError && error.status === 503;
-      if (!isOverloaded) throw error;
-      await sleep(1500);
-      result = await model.generateContent(userPrompt);
-    }
-    const text = result.response.text();
+    const text = await callAI({ systemPrompt: SYSTEM_PROMPT, userPrompt, json: true });
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch {
       return NextResponse.json(
-        { error: 'Gemini 응답을 JSON으로 파싱하지 못했습니다.', raw: text },
+        { error: 'AI 응답을 JSON으로 파싱하지 못했습니다.', raw: text },
         { status: 502 }
       );
     }
 
     return NextResponse.json(parsed);
   } catch (error) {
-    console.error('[analyze] Gemini API 호출 실패:', error);
+    console.error('[analyze] AI API 호출 실패:', error);
 
-    if (error instanceof GoogleGenerativeAIFetchError) {
+    if (error instanceof AIError) {
       if (error.status === 429) {
-        return NextResponse.json(
-          { error: 'Gemini API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.' },
-          { status: 429 }
-        );
+        return NextResponse.json({ error: error.message }, { status: 429 });
       }
-      if (error.status === 503) {
-        return NextResponse.json(
-          { error: 'Gemini 서버가 현재 혼잡합니다. 잠시 후 다시 시도해주세요.' },
-          { status: 503 }
-        );
+      if (error.status === 500) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
       }
-      return NextResponse.json(
-        { error: `Gemini API 호출 중 오류가 발생했습니다. (status: ${error.status ?? '알 수 없음'})` },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: error.message }, { status: 502 });
     }
 
     return NextResponse.json(

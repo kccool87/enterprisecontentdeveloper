@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI, GoogleGenerativeAIFetchError } from '@google/generative-ai';
+import { callAI, AIError } from '@/lib/aiClient';
 import { HTML_TEMPLATE_EXAMPLE } from '@/lib/htmlTemplate';
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 const SYSTEM_PROMPT = `너는 LG U+ Enterprise 블로그의 워드프레스 HTML 퍼블리싱 전문가야. [참고 템플릿]은 실제 운영 중인 블로그가 사용하는 HTML 구조 스켈레톤이야. 이 템플릿의 구조와 패턴을 그대로 따라서 [실제 콘텐츠]를 이 형식의 완성된 HTML로 작성해.
 
@@ -33,20 +29,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'content는 필수 입력값입니다.' }, { status: 400 });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'GEMINI_API_KEY 환경변수가 설정되지 않았습니다.' },
-        { status: 500 }
-      );
-    }
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
-      systemInstruction: SYSTEM_PROMPT,
-    });
-
     const userPrompt = `[메인 키워드]
 ${mainKeyword || '없음'}
 
@@ -59,43 +41,26 @@ ${content}
 [참고 템플릿]
 ${HTML_TEMPLATE_EXAMPLE}`;
 
-    let result;
-    try {
-      result = await model.generateContent(userPrompt);
-    } catch (error) {
-      const isOverloaded = error instanceof GoogleGenerativeAIFetchError && error.status === 503;
-      if (!isOverloaded) throw error;
-      await sleep(1500);
-      result = await model.generateContent(userPrompt);
-    }
+    const text = await callAI({ systemPrompt: SYSTEM_PROMPT, userPrompt, json: false });
 
-    const text = result.response.text().trim();
     const cleaned = text
+      .trim()
       .replace(/^```(?:html)?\s*/i, '')
       .replace(/```\s*$/i, '')
       .trim();
 
     return NextResponse.json({ html: cleaned });
   } catch (error) {
-    console.error('[generate-html] Gemini API 호출 실패:', error);
+    console.error('[generate-html] AI API 호출 실패:', error);
 
-    if (error instanceof GoogleGenerativeAIFetchError) {
+    if (error instanceof AIError) {
       if (error.status === 429) {
-        return NextResponse.json(
-          { error: 'Gemini API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.' },
-          { status: 429 }
-        );
+        return NextResponse.json({ error: error.message }, { status: 429 });
       }
-      if (error.status === 503) {
-        return NextResponse.json(
-          { error: 'Gemini 서버가 현재 혼잡합니다. 잠시 후 다시 시도해주세요.' },
-          { status: 503 }
-        );
+      if (error.status === 500) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
       }
-      return NextResponse.json(
-        { error: `Gemini API 호출 중 오류가 발생했습니다. (status: ${error.status ?? '알 수 없음'})` },
-        { status: 502 }
-      );
+      return NextResponse.json({ error: error.message }, { status: 502 });
     }
 
     return NextResponse.json(
