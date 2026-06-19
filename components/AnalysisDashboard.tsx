@@ -60,6 +60,7 @@ function getScoreBadge(
   return null;
 }
 
+
 function CircularScore({ label, score, isTotal = false }: { label: string; score: number; isTotal?: boolean }) {
   const size = 88;
   const strokeWidth = 8;
@@ -249,7 +250,7 @@ export default function AnalysisDashboard({ result, onApply, onRemove }: Analysi
                   {pendingCount > 0
                     ? `선택 반영 (${pendingCount})`
                     : appliedIndices.size > 0
-                    ? '선택 취소'
+                    ? '반영 해제'
                     : '선택 반영'}
                 </button>
               </div>

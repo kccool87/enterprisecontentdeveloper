@@ -12,6 +12,7 @@ const SYSTEM_PROMPT = `너는 LG U+ Enterprise 블로그의 워드프레스 HTML
 - 목차(TOC)와 h2 섹션은 실제 콘텐츠의 분량과 흐름에 맞게 새로 구성해(섹션 개수는 템플릿과 다를 수 있음).
 - FAQ는 실제 콘텐츠 주제에 맞는 질문 5~6개를 새로 만들어.
 - CTA 버튼/관련 글 링크의 href는 "#"으로 남겨.
+- 번호 이모지(1️⃣ 2️⃣ 3️⃣ …)가 붙는 소제목은 반드시 <p><span class="em-purple">1️⃣ …</span></p> 형태의 블록 요소로 감싸고, 뒤따르는 설명도 별도 <p> 태그로 분리해. 인라인 span 나열 절대 금지.
 - 다른 설명이나 마크다운 코드블록 없이 완성된 HTML 코드만 응답해.`;
 
 interface GenerateHtmlRequestBody {

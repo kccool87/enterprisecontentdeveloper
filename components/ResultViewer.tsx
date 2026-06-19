@@ -15,6 +15,8 @@ interface ResultViewerProps {
   reevaluateProgress?: number;
   isInitializing?: boolean;
   isInitializingProgress?: number;
+  geoHtmlError?: string | null;
+  onGeoHtmlRetry?: () => void;
   onReevaluate: () => void;
   onReevaluateStop: () => void;
 }
@@ -40,6 +42,8 @@ export default function ResultViewer({
   reevaluateProgress = 0,
   isInitializing = false,
   isInitializingProgress = 0,
+  geoHtmlError = null,
+  onGeoHtmlRetry,
   onReevaluate,
   onReevaluateStop,
 }: ResultViewerProps) {
@@ -214,6 +218,22 @@ export default function ResultViewer({
           </div>
         )}
 
+        {/* GEO HTML 생성 실패 시 오류 배너 */}
+        {!isInitializing && geoHtmlError && (
+          <div className="mb-3 flex flex-shrink-0 items-center justify-between gap-3 rounded-lg border border-red-500/25 bg-red-500/10 px-4 py-2.5">
+            <span className="text-xs text-red-400">{geoHtmlError}</span>
+            {onGeoHtmlRetry && (
+              <button
+                type="button"
+                onClick={onGeoHtmlRetry}
+                className="shrink-0 rounded-md border border-red-500/40 px-3 py-1 text-xs font-medium text-red-400 transition hover:bg-red-500/15"
+              >
+                GEO 템플릿 재생성
+              </button>
+            )}
+          </div>
+        )}
+
         {isInitializing ? (
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5">
             <div className="relative h-24 w-24">
@@ -258,7 +278,7 @@ export default function ResultViewer({
                 onInput={handlePreviewInput}
                 onBlur={handlePreviewBlur}
                 onPaste={handlePreviewPaste}
-                className="min-h-0 flex-1 overflow-y-auto p-4 prose prose-sm prose-invert max-w-none rounded-b-xl outline-none [&_.diff-highlight]:rounded [&_.diff-highlight]:bg-[#8c49ff]/25 [&_.diff-highlight]:px-1 [&_.diff-highlight]:py-0.5 [&_.diff-highlight]:text-violet-200 [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded"
+                className="min-h-0 flex-1 overflow-y-auto p-4 prose prose-sm prose-invert max-w-none rounded-b-xl outline-none [&_.diff-highlight]:rounded [&_.diff-highlight]:bg-[#8c49ff]/25 [&_.diff-highlight]:px-1 [&_.diff-highlight]:py-0.5 [&_.diff-highlight]:text-violet-200 [&_img]:my-2 [&_img]:max-w-full [&_img]:rounded [&_.faq-q]:!text-gray-100 [&_.faq-a]:!text-gray-300 [&_.faq-wrap]:text-gray-200"
               />
             </div>
 

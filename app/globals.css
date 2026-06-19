@@ -11,3 +11,8 @@ body {
   color: #6b7280;
   pointer-events: none;
 }
+
+@keyframes borderSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

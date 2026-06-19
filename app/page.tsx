@@ -103,6 +103,27 @@ function stripArticleWrapper(html: string): string {
   return html.replace(/^<article>\s*/i, '').replace(/\s*<\/article>\s*$/i, '');
 }
 
+// contentEditable innerHTML에서 <img> 태그만 추출
+function extractImgTags(html: string): string {
+  return (html.match(/<img\b[^>]*>/gi) ?? []).join('\n');
+}
+
+// GEO HTML의 첫 번째 <p> 바로 앞에 이미지 삽입
+function injectImagesIntoGeoHtml(geoHtml: string, imgHtml: string): string {
+  if (!imgHtml) return geoHtml;
+  return geoHtml.replace(/(<p[ >])/, `${imgHtml}\n$1`);
+}
+
+// GEO HTML에 개선안을 </article> 직전에 삽입 (diff-highlight로 구별 표시)
+function applyImprovementsToGeoHtml(geoHtml: string, items: AppliedImprovement[]): string {
+  if (items.length === 0) return geoHtml;
+  const additions = items.map((i) => `<p><span class="diff-highlight">${i.text}</span></p>`).join('\n');
+  if (/<\/article>/i.test(geoHtml)) {
+    return geoHtml.replace(/<\/article>/i, `${additions}\n</article>`);
+  }
+  return geoHtml + '\n' + additions;
+}
+
 function buildHtmlCode(content: string, appliedItems: AppliedImprovement[]): string {
   const lines = content.split('\n').filter((line) => line.trim().length > 0);
   if (lines.length === 0) return '<article></article>';
@@ -130,44 +151,44 @@ export default function Home() {
   const [appliedItems, setAppliedItems] = useState<AppliedImprovement[]>([]);
   const [previewHtml, setPreviewHtml] = useState('');
   const [htmlCode, setHtmlCode] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [reevaluateCount, setReevaluateCount] = useState(0);
   const [isReevaluating, setIsReevaluating] = useState(false);
   const [reevaluateProgress, setReevaluateProgress] = useState(0);
   const [isGeneratingGeoHtml, setIsGeneratingGeoHtml] = useState(false);
   const [htmlGenProgress, setHtmlGenProgress] = useState(0);
+  const [geoHtmlError, setGeoHtmlError] = useState<string | null>(null);
   // GEO HTML 보존용 ref (재평가 시 복원)
   const geoHtmlRef = useRef('');
+  // 원본 이미지 HTML 보존용 ref
+  const contentHtmlRef = useRef('');
   // 재평가 중단용 refs
   const reevaluateAbortRef = useRef<AbortController | null>(null);
   const reevaluateTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 현재 generate-html에 쓸 payload ref (재시도용)
+  const geoPayloadRef = useRef<AnalyzeRequestPayload | null>(null);
 
-  const handleResult = (nextPayload: AnalyzeRequestPayload, nextResult: AnalysisResult) => {
-    setPayload(nextPayload);
-    setResult(nextResult);
-    setAppliedItems([]);
-    setPreviewHtml(buildPreviewHtml(nextPayload.content, []));
-    setHtmlCode(buildHtmlCode(nextPayload.content, []));
-    setReevaluateCount(0);
-    geoHtmlRef.current = ''; // 새 분석 시 GEO HTML 초기화
+  const triggerGeoHtmlGeneration = (currentPayload: AnalyzeRequestPayload) => {
+    geoPayloadRef.current = currentPayload;
+    setGeoHtmlError(null);
+    setIsGeneratingGeoHtml(true);
+    setHtmlGenProgress(0);
+
+    const startTime = Date.now();
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      setHtmlGenProgress(Math.min(90, (elapsed / 20000) * 100));
+    }, 200);
 
     void (async () => {
-      setIsGeneratingGeoHtml(true);
-      setHtmlGenProgress(0);
-
-      const startTime = Date.now();
-      const timer = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        setHtmlGenProgress(Math.min(90, (elapsed / 20000) * 100));
-      }, 200);
-
       try {
         const response = await fetch('/api/generate-html', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            content: nextPayload.content,
-            mainKeyword: nextPayload.keywords.main,
-            purpose: nextPayload.purpose,
+            content: currentPayload.content,
+            mainKeyword: currentPayload.keywords.main,
+            purpose: currentPayload.purpose,
           }),
         });
         if (response.ok) {
@@ -175,29 +196,56 @@ export default function Home() {
           clearInterval(timer);
           setHtmlGenProgress(100);
           setTimeout(() => {
-            geoHtmlRef.current = data.html; // GEO HTML 저장
-            setHtmlCode(data.html);
-            setPreviewHtml(stripArticleWrapper(data.html));
+            const imgHtml = extractImgTags(contentHtmlRef.current);
+            const finalHtml = injectImagesIntoGeoHtml(data.html, imgHtml);
+            geoHtmlRef.current = finalHtml;
+            setHtmlCode(finalHtml);
+            setPreviewHtml(stripArticleWrapper(finalHtml));
             setIsGeneratingGeoHtml(false);
             setHtmlGenProgress(0);
           }, 400);
         } else {
+          const errorData: { error?: string } | null = await response.json().catch(() => null);
           clearInterval(timer);
           setHtmlGenProgress(0);
           setIsGeneratingGeoHtml(false);
+          setGeoHtmlError(errorData?.error ?? 'GEO 템플릿 생성에 실패했습니다.');
         }
       } catch {
         clearInterval(timer);
         setHtmlGenProgress(0);
         setIsGeneratingGeoHtml(false);
+        setGeoHtmlError('GEO 템플릿 생성 중 네트워크 오류가 발생했습니다.');
       }
     })();
+  };
+
+  const handleGeoHtmlRetry = () => {
+    if (geoPayloadRef.current) triggerGeoHtmlGeneration(geoPayloadRef.current);
+  };
+
+  const handleResult = (nextPayload: AnalyzeRequestPayload, nextResult: AnalysisResult, contentHtml: string) => {
+    setPayload(nextPayload);
+    setResult(nextResult);
+    setAppliedItems([]);
+    setPreviewHtml(buildPreviewHtml(nextPayload.content, []));
+    setHtmlCode(buildHtmlCode(nextPayload.content, []));
+    setReevaluateCount(0);
+    geoHtmlRef.current = '';
+    contentHtmlRef.current = contentHtml;
+    triggerGeoHtmlGeneration(nextPayload);
   };
 
   const handleApply = (items: AppliedImprovement[]) => {
     const merged = [...appliedItems, ...items];
     setAppliedItems(merged);
-    if (payload) {
+    const geo = geoHtmlRef.current;
+    if (geo) {
+      // GEO HTML 구조를 유지하면서 개선안 삽입
+      const updated = applyImprovementsToGeoHtml(geo, merged);
+      setPreviewHtml(stripArticleWrapper(updated));
+      setHtmlCode(updated);
+    } else if (payload) {
       setPreviewHtml(buildPreviewHtml(payload.content, merged));
       setHtmlCode(buildHtmlCode(payload.content, merged));
     }
@@ -206,7 +254,12 @@ export default function Home() {
   const handleRemove = (items: AppliedImprovement[]) => {
     const remaining = appliedItems.filter((existing) => !items.includes(existing));
     setAppliedItems(remaining);
-    if (payload) {
+    const geo = geoHtmlRef.current;
+    if (geo) {
+      const updated = applyImprovementsToGeoHtml(geo, remaining);
+      setPreviewHtml(stripArticleWrapper(updated));
+      setHtmlCode(updated);
+    } else if (payload) {
       setPreviewHtml(buildPreviewHtml(payload.content, remaining));
       setHtmlCode(buildHtmlCode(payload.content, remaining));
     }
@@ -260,11 +313,15 @@ export default function Home() {
           setIsReevaluating(false);
           setResult(nextResult);
           setReevaluateCount((count) => count + 1);
+          setAppliedItems([]);
           const savedGeoHtml = geoHtmlRef.current;
           if (savedGeoHtml) {
-            setAppliedItems([]);
             setHtmlCode(savedGeoHtml);
             setPreviewHtml(stripArticleWrapper(savedGeoHtml));
+          } else if (payload) {
+            // GEO HTML 생성 실패 시 텍스트 기반 HTML로 복원
+            setPreviewHtml(buildPreviewHtml(payload.content, []));
+            setHtmlCode(buildHtmlCode(payload.content, []));
           }
         }, 400);
       } else {
@@ -302,11 +359,40 @@ export default function Home() {
       </header>
 
       <main className="flex-1 min-h-0 overflow-y-auto px-6 py-6 lg:overflow-hidden">
-        <div className="grid grid-cols-1 gap-6 lg:h-full lg:grid-cols-[1fr_1fr_1.6fr] lg:items-stretch">
+        <div className="relative lg:h-full">
+          {/* 로딩 외곽 border 빔 — 세 카드 영역을 시계방향으로 순환 */}
+          {(isAnalyzing || isReevaluating || isGeneratingGeoHtml) && (
+            <div
+              className="pointer-events-none absolute rounded-2xl"
+              style={{ inset: '-2px', overflow: 'hidden', zIndex: 0 }}
+            >
+              {/* conic-gradient 회전 → 시계방향 빔 효과 */}
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: '-150%',
+                  background:
+                    'conic-gradient(from 0deg, transparent 0%, transparent 50%, #6b21ff 62%, #8c49ff 70%, #E60073 78%, #8c49ff 86%, transparent 93%)',
+                  animation: 'borderSpin 1.2s linear infinite',
+                }}
+              />
+              {/* 내부 마스크 — border 선만 보이도록 내부 덮음 */}
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: '2px',
+                  borderRadius: '14px',
+                  background: '#0b0d1a',
+                }}
+              />
+            </div>
+          )}
+        <div className="relative z-[1] grid grid-cols-1 gap-6 lg:h-full lg:grid-cols-[1fr_1fr_1.6fr] lg:items-stretch">
           <InputSection
             contentType={contentType}
             onContentTypeChange={setContentType}
             onResult={handleResult}
+            onLoadingChange={setIsAnalyzing}
           />
 
           <AnalysisDashboard result={result} onApply={handleApply} onRemove={handleRemove} />
@@ -327,12 +413,15 @@ export default function Home() {
               onReevaluateStop={handleReevaluateStop}
               isInitializing={isGeneratingGeoHtml}
               isInitializingProgress={htmlGenProgress}
+              geoHtmlError={geoHtmlError}
+              onGeoHtmlRetry={handleGeoHtmlRetry}
             />
           ) : (
             <div className="flex min-h-[600px] w-full items-center justify-center rounded-2xl border border-white/10 bg-[#161a2e] p-6 text-center text-sm text-gray-500 shadow-lg shadow-black/20 lg:h-full lg:min-h-0">
               보완사항을 반영하면 최종 결과가 여기에 표시됩니다.
             </div>
           )}
+        </div>
         </div>
       </main>
     </div>

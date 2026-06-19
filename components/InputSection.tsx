@@ -18,7 +18,8 @@ export interface AnalyzeRequestPayload {
 interface InputSectionProps {
   contentType: ContentType;
   onContentTypeChange: (type: ContentType) => void;
-  onResult: (payload: AnalyzeRequestPayload, result: AnalysisResult) => void;
+  onResult: (payload: AnalyzeRequestPayload, result: AnalysisResult, contentHtml: string) => void;
+  onLoadingChange?: (loading: boolean) => void;
 }
 
 function useTagInput() {
@@ -150,7 +151,7 @@ function TagInputField({
 
 const ESTIMATED_SECONDS = 20;
 
-export default function InputSection({ contentType, onContentTypeChange, onResult }: InputSectionProps) {
+export default function InputSection({ contentType, onContentTypeChange, onResult, onLoadingChange }: InputSectionProps) {
   const mainKeyword = useTagInput();
   const subKeywords = useTagInput();
   const longTailKeywords = useTagInput();
@@ -197,6 +198,7 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
     clearTimer();
     abortControllerRef.current?.abort();
     setIsLoading(false);
+    onLoadingChange?.(false);
     setIsPaused(true);
     // progress는 현재 값에서 멈춤 (frozen)
   };
@@ -206,6 +208,7 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
     if (!canSubmit) return;
 
     const content = contentRef.current?.innerText ?? '';
+    const contentHtml = contentRef.current?.innerHTML ?? '';
     const payload: AnalyzeRequestPayload = {
       keywords: {
         main: mainKeyword.tags.join(', '),
@@ -220,6 +223,7 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
     setError(null);
     setIsPaused(false);
     setIsLoading(true);
+    onLoadingChange?.(true);
     setProgress(0);
 
     const controller = new AbortController();
@@ -260,7 +264,8 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
       setTimeout(() => {
         setProgress(0);
         setIsLoading(false);
-        onResult(payload, result);
+        onLoadingChange?.(false);
+        onResult(payload, result, contentHtml);
       }, 400);
     } catch (err) {
       // AbortError: handleStop이 이미 상태 처리 완료
@@ -269,6 +274,7 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
         return;
       }
       cleanup(false);
+      onLoadingChange?.(false);
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
     }
   };

@@ -30,8 +30,14 @@ export const HTML_TEMPLATE_EXAMPLE = `<img src="https://lguplusenterprise.com/wp
 <h2 id="section-1">섹션 제목 1</h2>
 본문 단락. <strong>강조할 문장</strong>은 strong 태그로, <span style="color: #8c49ff;"><strong><span class="em-purple">브랜드 포인트로 강조할 핵심 문구</span></strong></span>는 보라색 span으로 감쌉니다.
 
-<span class="em-purple">1️⃣ <span style="color: #8c49ff;"><strong>소제목 A</strong></span></span>
-설명 문단.
+<p><span class="em-purple">1️⃣ <span style="color: #8c49ff;"><strong>소제목 A</strong></span></span></p>
+<p>설명 문단.</p>
+
+<p><span class="em-purple">2️⃣ <span style="color: #8c49ff;"><strong>소제목 B</strong></span></span></p>
+<p>설명 문단.</p>
+
+<p><span class="em-purple">3️⃣ <span style="color: #8c49ff;"><strong>소제목 C</strong></span></span></p>
+<p>설명 문단.</p>
 
 <img src="" alt="섹션 내용을 보여주는 인포그래픽 alt 텍스트" width="1536" height="1024" />
 
