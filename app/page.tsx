@@ -250,6 +250,8 @@ export default function Home() {
   const [isGeneratingGeoHtml, setIsGeneratingGeoHtml] = useState(false);
   const [htmlGenProgress, setHtmlGenProgress] = useState(0);
   const [geoHtmlError, setGeoHtmlError] = useState<string | null>(null);
+  const [isGeneratingImages, setIsGeneratingImages] = useState(false);
+  const [imagePlaceholder, setImagePlaceholder] = useState(false); // AI 생성 불가로 SVG 플레이스홀더 사용 여부
   // GEO HTML 보존용 ref (재평가 시 복원)
   const geoHtmlRef = useRef('');
   // 원본 이미지 HTML 보존용 ref
@@ -259,6 +261,54 @@ export default function Home() {
   const reevaluateTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // 현재 generate-html에 쓸 payload ref (재시도용)
   const geoPayloadRef = useRef<AnalyzeRequestPayload | null>(null);
+
+  // GEO HTML 내 빈 src img 태그에 AI 이미지 순차 생성 후 주입
+  const generateImagesForEmptyTags = async (initialHtml: string) => {
+    // src="" 또는 src='' 이고 alt 텍스트가 있는 img 태그 수집
+    const emptyImgRe = /<img\b[^>]*?\bsrc=(?:""|'')[^>]*\/?>/gi;
+    const tags: string[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = emptyImgRe.exec(initialHtml)) !== null) {
+      const tag = m[0];
+      const altM = /\balt=["']([^"']+)["']/.exec(tag);
+      if (altM?.[1]) tags.push(tag);
+    }
+    if (tags.length === 0) return;
+
+    setIsGeneratingImages(true);
+    setImagePlaceholder(false);
+    let html = initialHtml;
+    let usedPlaceholder = false;
+
+    for (const tag of tags) {
+      const altM = /\balt=["']([^"']+)["']/.exec(tag);
+      if (!altM?.[1]) continue;
+      try {
+        const res = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ alt: altM[1] }),
+        });
+        if (!res.ok) continue;
+        const data: { imageDataUrl?: string; isPlaceholder?: boolean } = await res.json();
+        if (!data.imageDataUrl) continue;
+
+        if (data.isPlaceholder) usedPlaceholder = true;
+
+        // src="" 또는 src='' 를 생성된 이미지 dataURL로 교체
+        const updatedTag = tag.replace(/\bsrc=(?:""|'')/, `src="${data.imageDataUrl}"`);
+        html = html.replace(tag, updatedTag);
+        geoHtmlRef.current = html;
+        setHtmlCode(html);
+        setPreviewHtml(stripArticleWrapper(html));
+      } catch {
+        // 개별 이미지 실패는 건너뜀
+      }
+    }
+
+    setIsGeneratingImages(false);
+    if (usedPlaceholder) setImagePlaceholder(true);
+  };
 
   const triggerGeoHtmlGeneration = (currentPayload: AnalyzeRequestPayload) => {
     geoPayloadRef.current = currentPayload;
@@ -295,6 +345,11 @@ export default function Home() {
             setPreviewHtml(stripArticleWrapper(finalHtml));
             setIsGeneratingGeoHtml(false);
             setHtmlGenProgress(0);
+
+            // 사용자가 이미지를 첨부하지 않은 경우에만 AI 이미지 자동 생성
+            if (!imgHtml) {
+              void generateImagesForEmptyTags(finalHtml);
+            }
           }, 400);
         } else {
           const errorData: { error?: string } | null = await response.json().catch(() => null);
@@ -453,7 +508,7 @@ export default function Home() {
       <main className="flex-1 min-h-0 overflow-y-auto px-6 py-6 lg:overflow-hidden">
         <div className="relative lg:h-full">
           {/* 로딩 외곽 border 빔 — 세 카드 영역을 시계방향으로 순환 */}
-          {(isAnalyzing || isReevaluating || isGeneratingGeoHtml) && (
+          {(isAnalyzing || isReevaluating || isGeneratingGeoHtml || isGeneratingImages) && (
             <div
               className="pointer-events-none absolute rounded-2xl"
               style={{ inset: '-2px', overflow: 'hidden', zIndex: 0 }}
@@ -507,6 +562,8 @@ export default function Home() {
               isInitializingProgress={htmlGenProgress}
               geoHtmlError={geoHtmlError}
               onGeoHtmlRetry={handleGeoHtmlRetry}
+              isGeneratingImages={isGeneratingImages}
+              imagePlaceholder={imagePlaceholder}
             />
           ) : (
             <div className="flex min-h-[600px] w-full items-center justify-center rounded-2xl border border-white/10 bg-[#161a2e] p-6 text-center text-sm text-gray-500 shadow-lg shadow-black/20 lg:h-full lg:min-h-0">

@@ -17,6 +17,8 @@ interface ResultViewerProps {
   isInitializingProgress?: number;
   geoHtmlError?: string | null;
   onGeoHtmlRetry?: () => void;
+  isGeneratingImages?: boolean;
+  imagePlaceholder?: boolean;
   onReevaluate: () => void;
   onReevaluateStop: () => void;
 }
@@ -44,6 +46,8 @@ export default function ResultViewer({
   isInitializingProgress = 0,
   geoHtmlError = null,
   onGeoHtmlRetry,
+  isGeneratingImages = false,
+  imagePlaceholder = false,
   onReevaluate,
   onReevaluateStop,
 }: ResultViewerProps) {
@@ -168,9 +172,22 @@ export default function ResultViewer({
     <>
       <div className="flex min-h-[600px] w-full flex-col rounded-2xl border border-white/10 bg-[#161a2e] p-6 shadow-lg shadow-black/20 lg:h-full lg:min-h-0">
         <div className="mb-3 flex flex-shrink-0 items-center justify-between">
-          <span className="inline-block rounded-full bg-lime-400 px-4 py-1.5 text-sm font-semibold text-gray-900">
-            최종 결과
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="inline-block rounded-full bg-lime-400 px-4 py-1.5 text-sm font-semibold text-gray-900">
+              최종 결과
+            </span>
+            {isGeneratingImages && (
+              <span className="flex items-center gap-1.5 rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-1 text-xs text-violet-300">
+                <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-violet-400" />
+                이미지 생성 중
+              </span>
+            )}
+            {!isGeneratingImages && imagePlaceholder && (
+              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-400">
+                이미지 유료 플랜 필요
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
