@@ -114,14 +114,106 @@ function injectImagesIntoGeoHtml(geoHtml: string, imgHtml: string): string {
   return geoHtml.replace(/(<p[ >])/, `${imgHtml}\n$1`);
 }
 
-// GEO HTML에 개선안을 </article> 직전에 삽입 (diff-highlight로 구별 표시)
+// HTML 태그·엔티티 제거 후 평문 반환
+function htmlToText(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// 삽입 텍스트의 토큰 중 75% 이상이 이미 GEO HTML에 존재하면 중복으로 간주
+function isDuplicate(geoHtml: string, insertText: string): boolean {
+  const geoTokens = new Set(tokenize(htmlToText(geoHtml)));
+  const ins = tokenize(insertText);
+  if (ins.length === 0) return false;
+  return ins.filter((t) => geoTokens.has(t)).length / ins.length > 0.75;
+}
+
+// GEO HTML을 h2 경계로 섹션 분할 후, 각 개선안을 맥락에 맞는 섹션 끝에 삽입
+// - 중복 내용은 건너뜀
+// - FAQ 섹션 이후에는 삽입하지 않음
 function applyImprovementsToGeoHtml(geoHtml: string, items: AppliedImprovement[]): string {
   if (items.length === 0) return geoHtml;
-  const additions = items.map((i) => `<p><span class="diff-highlight">${i.text}</span></p>`).join('\n');
-  if (/<\/article>/i.test(geoHtml)) {
-    return geoHtml.replace(/<\/article>/i, `${additions}\n</article>`);
+
+  // h2 태그 시작 위치 수집
+  const h2Positions: number[] = [];
+  const h2Re = /<h2\b[^>]*>/gi;
+  let hm: RegExpExecArray | null;
+  while ((hm = h2Re.exec(geoHtml)) !== null) h2Positions.push(hm.index);
+
+  // 섹션 경계: [0, h2_1, h2_2, ..., end]
+  const bounds = [0, ...h2Positions, geoHtml.length];
+  const sections = bounds.slice(0, -1).map((start, i) => ({
+    start,
+    end: bounds[i + 1],
+    plainText: htmlToText(geoHtml.slice(start, bounds[i + 1])),
+  }));
+
+  // FAQ 섹션 인덱스 탐지 → 그 앞 섹션까지만 삽입 허용
+  const faqIdx = sections.findIndex((s) =>
+    /faq|자주\s*묻|질문/.test(s.plainText.slice(0, 80).toLowerCase())
+  );
+  const maxSection = faqIdx >= 1 ? faqIdx - 1 : sections.length - 1;
+
+  // 개선안별 최적 섹션 결정
+  const insertions = new Map<number, string[]>();
+
+  for (const item of items) {
+    if (isDuplicate(geoHtml, item.text)) continue;
+
+    const field = item.field.toLowerCase();
+    const itemTokens = new Set(tokenize(item.text));
+    let target = 0;
+
+    if (/서론|도입|시작|소개|배경|개요/.test(field)) {
+      target = 0;
+    } else if (/결론|마무리/.test(field)) {
+      const ci = sections
+        .slice(0, maxSection + 1)
+        .findIndex((s) => /결론|마무리/.test(s.plainText.slice(0, 80)));
+      target = ci >= 0 ? ci : maxSection;
+    } else {
+      // 단어 겹침이 가장 높은 섹션 선택
+      let best = -1;
+      sections.slice(0, maxSection + 1).forEach((sec, idx) => {
+        const score = overlapRatio(tokenize(sec.plainText), itemTokens);
+        if (score > best) { best = score; target = idx; }
+      });
+      // 겹침이 거의 없으면 첫 번째 본문 섹션으로 fallback
+      if (best < 0.05) target = sections.length > 1 ? 1 : 0;
+    }
+
+    target = Math.min(target, maxSection);
+    if (!insertions.has(target)) insertions.set(target, []);
+    insertions.get(target)!.push(
+      `<p><span class="diff-highlight">${item.text}</span></p>`
+    );
   }
-  return geoHtml + '\n' + additions;
+
+  if (insertions.size === 0) return geoHtml;
+
+  // 각 섹션 끝 (&nbsp; 패딩 앞)에 삽입 후 재조립
+  let result = '';
+  for (let i = 0; i < sections.length; i++) {
+    const chunk = geoHtml.slice(sections[i].start, sections[i].end);
+    const adds = insertions.get(i);
+    if (!adds?.length) {
+      result += chunk;
+    } else {
+      const m = /(\s*(&nbsp;\s*)+)$/i.exec(chunk);
+      if (m) {
+        result +=
+          chunk.slice(0, m.index) + '\n' + adds.join('\n') + '\n' + chunk.slice(m.index);
+      } else {
+        result += chunk + '\n' + adds.join('\n');
+      }
+    }
+  }
+
+  return result;
 }
 
 function buildHtmlCode(content: string, appliedItems: AppliedImprovement[]): string {
