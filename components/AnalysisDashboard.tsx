@@ -24,6 +24,8 @@ export interface AnalysisResult {
 export interface AppliedImprovement {
   field: string;
   text: string;
+  reason?: string;     // 섹션 위치 결정에 활용
+  suggestion?: string; // 섹션 위치 결정에 활용
 }
 
 interface AnalysisDashboardProps {
@@ -173,7 +175,12 @@ export default function AnalysisDashboard({ result, onApply, onRemove }: Analysi
     if (targets.length === 0) return;
     const appliedItems = targets.map(({ item, index }) => ({
       index,
-      appliedItem: { field: item.field, text: getText(index, item) } as AppliedImprovement,
+      appliedItem: {
+        field: item.field,
+        text: getText(index, item),
+        reason: item.reason,
+        suggestion: item.suggestion,
+      } as AppliedImprovement,
     }));
     onApply(appliedItems.map(({ appliedItem }) => appliedItem));
     setAppliedIndices((prev) => {

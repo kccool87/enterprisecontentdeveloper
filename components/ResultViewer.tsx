@@ -1,6 +1,14 @@
 'use client';
 
-import { useRef, useState, useLayoutEffect, type FocusEvent } from 'react';
+import { useRef, useState, useLayoutEffect, useEffect, type FocusEvent } from 'react';
+
+// 코드 뷰 표시용: base64 data URL을 짧은 설명으로 대체 (복사는 원본 사용)
+function truncateBase64InHtml(html: string): string {
+  return html.replace(
+    /src="data:([^;]+);base64,[A-Za-z0-9+/=]+"/g,
+    (_match, mime: string) => `src="[${mime} 이미지 데이터]"`
+  );
+}
 
 interface ResultViewerProps {
   previewHtml: string;
@@ -58,7 +66,14 @@ export default function ResultViewer({
   const [instructionProgress, setInstructionProgress] = useState(0);
   const [instructionError, setInstructionError] = useState<string | null>(null);
   const [showHtmlModal, setShowHtmlModal] = useState(false);
+  // 텍스트에어리어 표시용: base64 단축 버전 (복사는 htmlCode prop 원본 사용)
+  const [displayCode, setDisplayCode] = useState(() => truncateBase64InHtml(htmlCode));
   const previewRef = useRef<HTMLDivElement>(null);
+
+  // htmlCode prop이 변경되면 displayCode 동기화
+  useEffect(() => {
+    setDisplayCode(truncateBase64InHtml(htmlCode));
+  }, [htmlCode]);
   // 재평가 중엔 버튼이 '중단' 역할 → 비활성화하지 않음
   const reevaluateDisabled = !isReevaluating && reevaluateCount >= maxReevaluate;
 
@@ -189,13 +204,6 @@ export default function ResultViewer({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="rounded-lg border border-white/20 px-4 py-2 text-sm font-medium text-gray-400 transition hover:border-white/40 hover:text-white"
-            >
-              RESET
-            </button>
             <button
               type="button"
               onClick={isReevaluating ? onReevaluateStop : onReevaluate}
@@ -337,8 +345,11 @@ export default function ResultViewer({
                 </div>
               ) : (
                 <textarea
-                  value={htmlCode}
-                  onChange={(e) => onHtmlCodeChange(e.target.value)}
+                  value={displayCode}
+                  onChange={(e) => {
+                    setDisplayCode(e.target.value);
+                    onHtmlCodeChange(e.target.value);
+                  }}
                   spellCheck={false}
                   className="min-h-0 flex-1 w-full resize-none bg-[#0f1224] p-4 font-mono text-xs leading-relaxed text-gray-100 outline-none"
                 />

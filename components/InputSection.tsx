@@ -20,6 +20,7 @@ interface InputSectionProps {
   onContentTypeChange: (type: ContentType) => void;
   onResult: (payload: AnalyzeRequestPayload, result: AnalysisResult, contentHtml: string) => void;
   onLoadingChange?: (loading: boolean) => void;
+  onReset?: () => void;
 }
 
 function useTagInput() {
@@ -151,7 +152,7 @@ function TagInputField({
 
 const ESTIMATED_SECONDS = 20;
 
-export default function InputSection({ contentType, onContentTypeChange, onResult, onLoadingChange }: InputSectionProps) {
+export default function InputSection({ contentType, onContentTypeChange, onResult, onLoadingChange, onReset }: InputSectionProps) {
   const mainKeyword = useTagInput();
   const subKeywords = useTagInput();
   const longTailKeywords = useTagInput();
@@ -287,10 +288,21 @@ export default function InputSection({ contentType, onContentTypeChange, onResul
   return (
     <div className="flex min-h-[600px] w-full flex-col rounded-2xl border border-white/10 bg-[#161a2e] p-6 shadow-lg shadow-black/20 lg:h-full lg:min-h-0">
 
-      {/* 상단 고정 뱃지 */}
-      <span className="mb-3 block flex-shrink-0 rounded-full bg-lime-400 px-4 py-1.5 text-center text-sm font-semibold text-gray-900">
-        INPUT YOUR CONTENT
-      </span>
+      {/* 상단 고정 뱃지 + RESET */}
+      <div className="mb-3 flex flex-shrink-0 items-center justify-between">
+        <span className="rounded-full bg-lime-400 px-4 py-1.5 text-sm font-semibold text-gray-900">
+          INPUT YOUR CONTENT
+        </span>
+        {onReset && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="rounded-lg border border-white/20 px-3 py-1.5 text-xs font-medium text-gray-400 transition hover:border-white/40 hover:text-white"
+          >
+            RESET
+          </button>
+        )}
+      </div>
 
       {/* 스크롤 영역 */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
